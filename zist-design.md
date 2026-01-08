@@ -91,6 +91,7 @@ CREATE TABLE commands (
     machine TEXT NOT NULL,            -- hostname of machine (e.g., "QE93", "main")
     timestamp REAL NOT NULL,          -- unix timestamp with subsecond precision
     command TEXT NOT NULL,            -- the command executed
+    source TEXT NOT NULL,             -- history file path (e.g., "~/.zsh_history")
     duration INTEGER,                 -- execution duration in seconds
     cwd TEXT,                         -- working directory
     exit_code INTEGER,                -- command exit code
@@ -100,6 +101,7 @@ CREATE TABLE commands (
 
 CREATE INDEX idx_timestamp ON commands(timestamp DESC);
 CREATE INDEX idx_machine ON commands(machine);
+CREATE INDEX idx_source ON commands(source);
 
 -- Full-text search on command text
 CREATE VIRTUAL TABLE commands_fts USING fts5(
@@ -126,8 +128,9 @@ CREATE TABLE sync_state (
 
 ```ini
 [collection]
-# Path to ZSH history file (supports ~ expansion)
-history_file = ~/.zsh_history
+# Paths to ZSH history files (supports ~ expansion)
+# Comma-separated list; all files will be collected from
+history_files = ~/.zsh_history, ~/.claude/claude_zsh_history
 
 # Machine name for command attribution
 # Use 'auto' to detect from hostname, or set explicitly
@@ -220,8 +223,8 @@ bindkey '^R' zist-search-widget
        "qecarbon": 1800.500
      },
      "commands": [
-       {"machine": "QE93", "timestamp": 3000.000, "command": "ls", ...},
-       {"machine": "QE93", "timestamp": 3001.000, "command": "docker ps", ...}
+       {"machine": "QE93", "timestamp": 3000.000, "command": "ls", "source": "~/.zsh_history", ...},
+       {"machine": "QE93", "timestamp": 3001.000, "command": "docker ps", "source": "~/.claude/claude_zsh_history", ...}
      ]
    }
    EOF
@@ -238,8 +241,8 @@ bindkey '^R' zist-search-widget
 5. main responds:
    {
      "commands": [
-       {"machine": "dev", "timestamp": 100.000, "command": "cd /tmp", ...},
-       {"machine": "auir", "timestamp": 1501.200, "command": "docker ps", ...},
+       {"machine": "dev", "timestamp": 100.000, "command": "cd /tmp", "source": "~/.zsh_history", ...},
+       {"machine": "auir", "timestamp": 1501.200, "command": "docker ps", "source": "~/.zsh_history", ...},
        ...
      ],
      "received": 2
@@ -481,6 +484,7 @@ Same data synced to all peers maintains same timestamps.
       "machine": "client_machine",
       "timestamp": 1234567910.000,
       "command": "ls -la",
+      "source": "~/.zsh_history",
       "duration": 0,
       "cwd": "/home/user",
       "exit_code": 0
@@ -498,6 +502,7 @@ Same data synced to all peers maintains same timestamps.
       "machine": "some_origin",
       "timestamp": 1234567920.000,
       "command": "docker ps",
+      "source": "~/.zsh_history",
       "duration": 1,
       "cwd": "/home/user",
       "exit_code": 0

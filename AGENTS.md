@@ -7,6 +7,11 @@
 **Owner:** tchaudhry
 **Purpose:** Learning project (user wants to learn Zig and rekindle coding passion)
 
+**User Background:**
+- Completed ziglings (basic Zig syntax, concepts)
+- Familiar with Go (has programming experience)
+- Wants to write idiomatic Zig, not "Go in Zig"
+
 **Full Design:** See `zist-design.md`
 **Progress Tracking:** See `PROJECT_TRACKER.md`
 
