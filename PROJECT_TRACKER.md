@@ -1,6 +1,6 @@
 # zist - Project Tracker
 
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-01-09
 
 ---
 
@@ -14,10 +14,18 @@ See `zist-design.md` for full design specification.
 ## Phase 1: Core MVP (No Sync)
 
 ### Setup & Infrastructure
-- [ ] Zig project structure (`build.zig`, directory layout)
+- [x] Zig project structure (`build.zig`, directory layout)
 - [ ] SQLite integration (zig-sqlite dependency)
 - [ ] Database schema creation
-- [ ] INI configuration parser
+- [~] INI configuration parser (IN PROGRESS)
+  - [x] Config struct definitions (Collection, Sync, LLM)
+  - [x] expandHome helper function
+  - [x] File reading and line parsing
+  - [x] Section parsing ([section])
+  - [x] Comment handling (# comments)
+  - [ ] Key-value parsing (key = value)
+  - [ ] Array parsing (comma-separated values)
+  - [x] Test infrastructure with @embedFile
 
 ### Core Features
 - [ ] ZSH history parser
@@ -78,11 +86,27 @@ See `zist-design.md` for full design specification.
 
 ## Currently In Progress
 
-**None** - Ready to start implementation
+**INI Configuration Parser** (`src/config.zig`)
+- Config struct with Collection, Sync, LLM sections defined
+- expandHome() helper implemented
+- Section enum for tracking active section
+- parse() reads file, delegates to parseFromString()
+- parseFromString() parses lines, handles comments, identifies sections
+- Need to implement: key-value parsing per section
 
 ---
 
 ## Recently Completed
+
+**2026-01-09:**
+- ✅ Project structure synced and reviewed
+
+**Previous session:**
+- ✅ Zig project structure set up (build.zig, src/)
+- ✅ Basic CLI skeleton (main.zig with help/version)
+- ✅ Library module structure (root.zig exports config)
+- ✅ Config struct definitions started
+- ✅ bufferedPrint utility function
 
 **2026-01-04:**
 - ✅ Design document finalized
@@ -114,12 +138,19 @@ _Add questions here as they come up during implementation_
 
 ## Next Session Goals
 
-**Suggested first steps:**
-1. Set up Zig project structure (build.zig, src/ directory)
-2. Add zig-sqlite dependency
-3. Create database schema (run SQL to create tables)
-4. Write simple INI parser
-5. Test: Read config.ini and print values
+**Continue INI parser implementation:**
+1. Complete the `load()` function in `config.zig`:
+   - Read file contents
+   - Parse lines (skip comments, handle sections)
+   - Parse key-value pairs
+   - Populate Config struct fields
+2. Add tests for INI parser
+3. Test with sample config.ini file
+
+**After INI parser:**
+4. Add zig-sqlite dependency
+5. Create database schema (run SQL to create tables)
+6. Start ZSH history parser
 
 ---
 

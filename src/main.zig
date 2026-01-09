@@ -30,7 +30,7 @@ pub fn main() !void {
         .help => try printHelp(),
         .version => try printVersion(),
     }
-    const cfg = try zist.config.load("~/.config/zist/config.ini");
+    const cfg = try zist.config.Config.parse(allocator, "~/.config/zist/config.ini");
     _ = cfg;
 }
 
