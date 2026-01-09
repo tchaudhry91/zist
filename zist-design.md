@@ -124,7 +124,7 @@ CREATE TABLE sync_state (
 
 ### 3. Configuration
 
-**~/.zist/config.ini:**
+**~/.config/zist/config.ini:**
 
 ```ini
 [collection]
@@ -139,27 +139,22 @@ machine_name = auto
 [sync]
 # Comma or space-separated list of peer machines (SSH hostnames)
 # These should be SSH-accessible (configured in ~/.ssh/config)
-peers = main,dev,auir,QECarbon
-
-[search]
-# Maximum number of search results to display
-max_results = 100
-
-# Keybinding for interactive search (ZSH notation)
-# Examples: ^R (Ctrl+R), ^X (Ctrl+X), ^G (Ctrl+G)
-keybinding = ^R
+peers = main,dev,auir
 
 [llm]
-# Ollama API endpoint for conversational search (zist ask)
-ollama_url = http://localhost:11434
+# LLM API endpoint for conversational search (zist ask)
+endpoint = http://localhost:11434
 
-# Ollama model to use
+# API key (if required by your LLM provider)
+api_key =
+
+# Model to use
 # Examples: llama2, codellama, mistral
 model = llama2
 ```
 
 **Configuration Notes:**
-- File location: `~/.zist/config.ini`
+- File location: `~/.config/zist/config.ini`
 - Created by `zist install` with defaults
 - INI format chosen for simplicity (no external parser needed)
 - All settings have sensible defaults except `peers` (must be configured)

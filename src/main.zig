@@ -1,7 +1,7 @@
 const std = @import("std");
 const zist = @import("zist");
 
-const VERSION = "0.1.0";
+const version = "0.1.0";
 
 const Command = enum {
     help,
@@ -24,15 +24,17 @@ pub fn main() !void {
     }
 
     // Parse Base Command
-    const cmd = parse_base_command(base_command) catch .help;
+    const cmd = parseBaseCommand(base_command) catch .help;
 
     switch (cmd) {
         .help => try printHelp(),
         .version => try printVersion(),
     }
+    const cfg = try zist.config.load("~/.config/zist/config.ini");
+    _ = cfg;
 }
 
-fn parse_base_command(arg: []const u8) ParseError!Command {
+fn parseBaseCommand(arg: []const u8) ParseError!Command {
     if (std.mem.eql(u8, arg, "--help")) {
         return .help;
     } else if (std.mem.eql(u8, arg, "--version")) {
@@ -42,9 +44,28 @@ fn parse_base_command(arg: []const u8) ParseError!Command {
 }
 
 fn printHelp() !void {
-    try zist.bufferedPrint("Usage: Please use the following commands", .{});
+    const help_text =
+        \\zist - P2P ZSH history sync
+        \\
+        \\Usage: zist <command> [options]
+        \\
+        \\Commands:
+        \\  collect      Capture commands from ZSH history
+        \\  search       Interactive command search
+        \\  ask          Conversational search using LLM
+        \\  sync         Sync with peer machines
+        \\  serve-sync   Handle incoming sync request (via SSH)
+        \\  install      Set up ZSH integration
+        \\  uninstall    Remove ZSH integration
+        \\
+        \\Options:
+        \\  --help       Show this help
+        \\  --version    Show version
+        \\
+    ;
+    try zist.bufferedPrint("{s}", .{help_text});
 }
 
 fn printVersion() !void {
-    try zist.bufferedPrint("{s}", .{VERSION});
+    try zist.bufferedPrint("{s}\n", .{version});
 }
