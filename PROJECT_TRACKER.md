@@ -19,13 +19,17 @@ See `zist-design.md` for full design specification.
 - [ ] Database schema creation
 - [~] INI configuration parser (IN PROGRESS)
   - [x] Config struct definitions (Collection, Sync, LLM)
-  - [x] expandHome helper function
+  - [x] expand_home helper function
   - [x] File reading and line parsing
   - [x] Section parsing ([section])
   - [x] Comment handling (# comments)
-  - [ ] Key-value parsing (key = value)
-  - [ ] Array parsing (comma-separated values)
+  - [x] Key-value parsing (key = value)
+  - [x] Array parsing (comma-separated values)
   - [x] Test infrastructure with @embedFile
+  - [x] Memory management (deinit, ownership)
+  - [ ] Error messages for parse failures (line numbers, context)
+  - [ ] Mandatory field validation
+  - [ ] Unknown key/section warnings
 
 ### Core Features
 - [ ] ZSH history parser
@@ -87,18 +91,23 @@ See `zist-design.md` for full design specification.
 ## Currently In Progress
 
 **INI Configuration Parser** (`src/config.zig`)
-- Config struct with Collection, Sync, LLM sections defined
-- expandHome() helper implemented
-- Section enum for tracking active section
-- parse() reads file, delegates to parseFromString()
-- parseFromString() parses lines, handles comments, identifies sections
-- Need to implement: key-value parsing per section
+- Core parsing complete, need error handling improvements:
+  - Error messages with line numbers and context
+  - Mandatory field validation (fail if required fields missing)
+  - Warnings for unknown keys/sections
 
 ---
 
 ## Recently Completed
 
 **2026-01-09:**
+- ✅ INI parser core implementation
+  - Section parsing, key-value parsing, array parsing
+  - parse() for file reading, parse_from_string() for testing
+  - Memory management with deinit() and proper ownership
+  - Nullable fields for tracking allocated vs default values
+- ✅ Zig naming conventions applied (snake_case)
+- ✅ Test suite with @embedFile test data
 - ✅ Project structure synced and reviewed
 
 **Previous session:**
@@ -138,14 +147,10 @@ _Add questions here as they come up during implementation_
 
 ## Next Session Goals
 
-**Continue INI parser implementation:**
-1. Complete the `load()` function in `config.zig`:
-   - Read file contents
-   - Parse lines (skip comments, handle sections)
-   - Parse key-value pairs
-   - Populate Config struct fields
-2. Add tests for INI parser
-3. Test with sample config.ini file
+**Finish INI parser polish:**
+1. Add line number tracking for better error messages
+2. Implement mandatory field validation (e.g., peers required for sync)
+3. Add warnings for unknown keys/sections
 
 **After INI parser:**
 4. Add zig-sqlite dependency

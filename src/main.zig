@@ -24,17 +24,17 @@ pub fn main() !void {
     }
 
     // Parse Base Command
-    const cmd = parseBaseCommand(base_command) catch .help;
+    const cmd = parse_base_command(base_command) catch .help;
 
     switch (cmd) {
-        .help => try printHelp(),
-        .version => try printVersion(),
+        .help => try print_help(),
+        .version => try print_version(),
     }
     const cfg = try zist.config.Config.parse(allocator, "~/.config/zist/config.ini");
     _ = cfg;
 }
 
-fn parseBaseCommand(arg: []const u8) ParseError!Command {
+fn parse_base_command(arg: []const u8) ParseError!Command {
     if (std.mem.eql(u8, arg, "--help")) {
         return .help;
     } else if (std.mem.eql(u8, arg, "--version")) {
@@ -43,7 +43,7 @@ fn parseBaseCommand(arg: []const u8) ParseError!Command {
     return ParseError.InvalidCommand;
 }
 
-fn printHelp() !void {
+fn print_help() !void {
     const help_text =
         \\zist - P2P ZSH history sync
         \\
@@ -66,6 +66,6 @@ fn printHelp() !void {
     try zist.bufferedPrint("{s}", .{help_text});
 }
 
-fn printVersion() !void {
+fn print_version() !void {
     try zist.bufferedPrint("{s}\n", .{version});
 }

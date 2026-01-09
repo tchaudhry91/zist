@@ -9,6 +9,8 @@ pub const Config = struct {
     sync: Sync = .{},
     llm: LLM = .{},
 
+    contents: ?[]const u8 = null,
+
     const Section = enum {
         collection,
         sync,
@@ -16,12 +18,12 @@ pub const Config = struct {
     };
 
     pub const Collection = struct {
-        history_files: []const []const u8 = &.{"~/.zsh_history"},
+        history_files: ?[]const []const u8 = null,
         machine_name: []const u8 = "auto",
     };
 
     pub const Sync = struct {
-        peers: []const []const u8 = &.{},
+        peers: ?[]const []const u8 = null,
     };
 
     pub const LLM = struct {
@@ -30,24 +32,33 @@ pub const Config = struct {
         model: ?[]const u8 = null,
     };
 
+    pub fn deinit(self: *Config, allocator: std.mem.Allocator) void {
+        if (self.contents) |c| allocator.free(c);
+        if (self.collection.history_files) |hf| allocator.free(hf);
+        if (self.sync.peers) |p| allocator.free(p);
+    }
+
     pub fn parse(allocator: std.mem.Allocator, path: []const u8) !Config {
-        const expandedPath = try expandHome(allocator, path);
-        const f = try std.fs.openFileAbsolute(expandedPath, .{});
+        const expanded_path = try expand_home(allocator, path);
+        defer allocator.free(expanded_path);
+        const f = try std.fs.openFileAbsolute(expanded_path, .{});
         defer f.close();
 
         const contents = try f.readToEndAlloc(allocator, 1024 * 1024);
-        return parseFromString(allocator, contents);
+        var config = try parse_from_string(allocator, contents);
+        config.contents = contents; // parse() owns the contents
+        return config;
     }
 
-    pub fn parseFromString(allocator: std.mem.Allocator, contents: []const u8) !Config {
-        const collection: Collection = .{};
-        const sync: Sync = .{};
-        const llm: LLM = .{};
-        var activeSection: ?Section = null;
+    pub fn parse_from_string(allocator: std.mem.Allocator, contents: []const u8) !Config {
+        var collection: Collection = .{};
+        var sync: Sync = .{};
+        var llm: LLM = .{};
+        var active_section: ?Section = null;
 
-        var lineIterator = std.mem.tokenizeScalar(u8, contents, '\n');
+        var line_iterator = std.mem.tokenizeScalar(u8, contents, '\n');
 
-        while (lineIterator.next()) |raw_line| {
+        while (line_iterator.next()) |raw_line| {
             const line = std.mem.trim(u8, raw_line, " \t\r");
             // Empty line or comment
             if (line.len == 0 or line[0] == '#') {
@@ -56,24 +67,65 @@ pub const Config = struct {
 
             if (std.mem.startsWith(u8, line, "[")) {
                 if (std.mem.eql(u8, line, "[collection]")) {
-                    activeSection = .collection;
+                    active_section = .collection;
                     continue;
                 }
                 if (std.mem.eql(u8, line, "[sync]")) {
-                    activeSection = .sync;
+                    active_section = .sync;
                     continue;
                 }
                 if (std.mem.eql(u8, line, "[llm]")) {
-                    activeSection = .llm;
+                    active_section = .llm;
                     continue;
                 }
             }
 
             // Parse KVs now
-            switch (activeSection.?) {
-                Section.collection => {},
-                Section.sync => {},
-                Section.llm => {},
+            const kv_index = std.mem.indexOf(u8, line, "=") orelse return ParseError.InvalidConfig;
+            const key = std.mem.trim(u8, line[0..kv_index], " \t");
+            const value = std.mem.trim(u8, line[kv_index + 1 ..], " \t");
+
+            switch (active_section.?) {
+                Section.collection => {
+                    if (std.mem.eql(u8, key, "history_files")) {
+                        var hfs = try std.ArrayList([]const u8).initCapacity(allocator, 1);
+                        var hf_iterator = std.mem.tokenizeScalar(u8, value, ',');
+                        while (hf_iterator.next()) |hf| {
+                            try hfs.append(allocator, hf);
+                        }
+                        collection.history_files = try hfs.toOwnedSlice(allocator);
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "machine_name")) {
+                        collection.machine_name = value;
+                        continue;
+                    }
+                },
+                Section.sync => {
+                    if (std.mem.eql(u8, key, "peers")) {
+                        var peers = try std.ArrayList([]const u8).initCapacity(allocator, 0);
+                        var peers_iterator = std.mem.tokenizeScalar(u8, value, ',');
+                        while (peers_iterator.next()) |peer| {
+                            try peers.append(allocator, peer);
+                        }
+                        sync.peers = try peers.toOwnedSlice(allocator);
+                        continue;
+                    }
+                },
+                Section.llm => {
+                    if (std.mem.eql(u8, key, "endpoint")) {
+                        llm.endpoint = value;
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "api_key")) {
+                        llm.api_key = value;
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "model")) {
+                        llm.model = value;
+                        continue;
+                    }
+                },
             }
         }
 
@@ -85,7 +137,7 @@ pub const Config = struct {
     }
 };
 
-fn expandHome(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+fn expand_home(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     if (std.mem.startsWith(u8, path, "~")) {
         const home = std.posix.getenv("HOME") orelse return ParseError.NoHomeDir;
         return std.fs.path.join(allocator, &.{ home, path[1..] });
@@ -101,17 +153,19 @@ const testing = std.testing;
 
 test "parse basic config" {
     const contents = @embedFile("testdata/basic.ini");
-    const config = try Config.parseFromString(testing.allocator, contents);
+    var config = try Config.parse_from_string(testing.allocator, contents);
+    defer config.deinit(testing.allocator);
 
     try testing.expectEqualStrings("testmachine", config.collection.machine_name);
     try testing.expectEqualStrings("http://localhost:11434", config.llm.endpoint.?);
     try testing.expectEqualStrings("llama2", config.llm.model.?);
-    try testing.expectEqual(@as(usize, 3), config.sync.peers.len);
+    try testing.expectEqual(@as(usize, 3), config.sync.peers.?.len);
 }
 
 test "parse minimal config" {
     const contents = @embedFile("testdata/minimal.ini");
-    const config = try Config.parseFromString(testing.allocator, contents);
+    var config = try Config.parse_from_string(testing.allocator, contents);
+    defer config.deinit(testing.allocator);
 
     try testing.expectEqualStrings("laptop", config.collection.machine_name);
     // LLM should have defaults (null)
@@ -121,14 +175,16 @@ test "parse minimal config" {
 
 test "parse config with comments" {
     const contents = @embedFile("testdata/comments.ini");
-    const config = try Config.parseFromString(testing.allocator, contents);
+    var config = try Config.parse_from_string(testing.allocator, contents);
+    defer config.deinit(testing.allocator);
 
     try testing.expectEqualStrings("myhost", config.collection.machine_name);
 }
 
 test "parse config with whitespace" {
     const contents = @embedFile("testdata/whitespace.ini");
-    const config = try Config.parseFromString(testing.allocator, contents);
+    var config = try Config.parse_from_string(testing.allocator, contents);
+    defer config.deinit(testing.allocator);
 
     try testing.expectEqualStrings("spacedvalue", config.collection.machine_name);
     try testing.expectEqualStrings("http://localhost:11434", config.llm.endpoint.?);
@@ -143,7 +199,8 @@ test "section parsing" {
         \\[collection]
         \\machine_name = test2
     ;
-    const config = try Config.parseFromString(testing.allocator, contents);
+    var config = try Config.parse_from_string(testing.allocator, contents);
+    defer config.deinit(testing.allocator);
 
     // Last value wins when section appears twice
     try testing.expectEqualStrings("test2", config.collection.machine_name);
@@ -151,7 +208,8 @@ test "section parsing" {
 }
 
 test "empty config returns defaults" {
-    const config = try Config.parseFromString(testing.allocator, "");
+    var config = try Config.parse_from_string(testing.allocator, "");
+    defer config.deinit(testing.allocator);
 
     try testing.expectEqualStrings("auto", config.collection.machine_name);
     try testing.expect(config.llm.endpoint == null);
