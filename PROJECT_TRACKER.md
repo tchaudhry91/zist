@@ -1,6 +1,6 @@
 # zist - Project Tracker
 
-**Last Updated:** 2026-01-09
+**Last Updated:** 2026-01-11
 
 ---
 
@@ -17,7 +17,7 @@ See `zist-design.md` for full design specification.
 - [x] Zig project structure (`build.zig`, directory layout)
 - [ ] SQLite integration (zig-sqlite dependency)
 - [ ] Database schema creation
-- [~] INI configuration parser (IN PROGRESS)
+- [x] INI configuration parser
   - [x] Config struct definitions (Collection, Sync, LLM)
   - [x] expand_home helper function
   - [x] File reading and line parsing
@@ -27,12 +27,13 @@ See `zist-design.md` for full design specification.
   - [x] Array parsing (comma-separated values)
   - [x] Test infrastructure with @embedFile
   - [x] Memory management (deinit, ownership)
-  - [ ] Error messages for parse failures (line numbers, context)
-  - [ ] Mandatory field validation
-  - [ ] Unknown key/section warnings
+  - [x] Error messages with line numbers (log.err)
 
 ### Core Features
-- [ ] ZSH history parser
+- [~] ZSH history parser (IN PROGRESS)
+  - [x] Scaffold with History/Command structs
+  - [x] Memory management (deinit, ownership pattern)
+  - [x] Test infrastructure with sample.zsh_history
   - [ ] Basic line parsing (`: timestamp:duration;command`)
   - [ ] Multi-line command handling
   - [ ] Subsecond timestamp generation
@@ -90,15 +91,23 @@ See `zist-design.md` for full design specification.
 
 ## Currently In Progress
 
-**INI Configuration Parser** (`src/config.zig`)
-- Core parsing complete, need error handling improvements:
-  - Error messages with line numbers and context
-  - Mandatory field validation (fail if required fields missing)
-  - Warnings for unknown keys/sections
+**ZSH History Parser** (`src/history.zig`)
+- Scaffold complete with History/Command structs
+- Memory ownership pattern matches config.zig
+- TODO: Implement parse_from_string() logic
 
 ---
 
 ## Recently Completed
+
+**2026-01-11:**
+- ✅ INI parser complete with error logging
+  - Line numbers in error messages via std.log.scoped
+  - Specific error types (MissingEquals, UnknownSection, KeyBeforeSection)
+- ✅ ZSH history parser scaffold
+  - History/Command structs with same ownership pattern as Config
+  - Sample test data (sample.zsh_history)
+  - Test stubs ready for implementation
 
 **2026-01-09:**
 - ✅ INI parser core implementation
@@ -147,15 +156,16 @@ _Add questions here as they come up during implementation_
 
 ## Next Session Goals
 
-**Finish INI parser polish:**
-1. Add line number tracking for better error messages
-2. Implement mandatory field validation (e.g., peers required for sync)
-3. Add warnings for unknown keys/sections
+**ZSH History Parser (continue):**
+1. Implement parse_from_string() logic
+2. Parse `: timestamp:duration;command` format
+3. Handle multi-line commands (continuation lines)
+4. Enable test assertions
 
-**After INI parser:**
-4. Add zig-sqlite dependency
-5. Create database schema (run SQL to create tables)
-6. Start ZSH history parser
+**After history parser:**
+5. Add zig-sqlite dependency
+6. Create database schema
+7. Implement `zist collect` command
 
 ---
 

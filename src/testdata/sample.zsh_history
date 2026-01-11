@@ -1,0 +1,13 @@
+: 1704067200:0;ls -la
+: 1704067210:5;vim config.zig
+: 1704067220:0;git status
+: 1704067230:2;cargo build --release
+: 1704067300:0;echo "this is a
+temporary multi
+line command"
+: 1704067400:0;cd /home/user/projects
+: 1704067410:10;zig build test
+: 1704067500:0;cat ~/.zsh_history
+: 1704067600:0;echo 'single quotes work too
+across lines'
+: 1704067700:0;ls

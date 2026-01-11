@@ -2,6 +2,7 @@
 const std = @import("std");
 
 pub const config = @import("config.zig");
+pub const history = @import("history.zig");
 
 pub fn bufferedPrint(comptime fmt: []const u8, args: anytype) !void {
     var stdout_buffer: [1024]u8 = undefined;

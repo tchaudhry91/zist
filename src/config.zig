@@ -1,7 +1,11 @@
 const std = @import("std");
 
+const log = std.log.scoped(.config);
+
 const ParseError = error{
-    InvalidConfig,
+    MissingEquals,
+    UnknownSection,
+    KeyBeforeSection,
     NoHomeDir,
 };
 pub const Config = struct {
@@ -55,16 +59,20 @@ pub const Config = struct {
         var sync: Sync = .{};
         var llm: LLM = .{};
         var active_section: ?Section = null;
+        var line_num: usize = 0;
 
         var line_iterator = std.mem.tokenizeScalar(u8, contents, '\n');
 
         while (line_iterator.next()) |raw_line| {
+            line_num += 1;
             const line = std.mem.trim(u8, raw_line, " \t\r");
+
             // Empty line or comment
             if (line.len == 0 or line[0] == '#') {
                 continue;
             }
 
+            // Section header
             if (std.mem.startsWith(u8, line, "[")) {
                 if (std.mem.eql(u8, line, "[collection]")) {
                     active_section = .collection;
@@ -78,12 +86,23 @@ pub const Config = struct {
                     active_section = .llm;
                     continue;
                 }
+                // Unknown section
+                log.err("line {d}: unknown section '{s}'", .{ line_num, line });
+                return ParseError.UnknownSection;
             }
 
             // Parse KVs now
-            const kv_index = std.mem.indexOf(u8, line, "=") orelse return ParseError.InvalidConfig;
+            const kv_index = std.mem.indexOf(u8, line, "=") orelse {
+                log.err("line {d}: missing '=' in '{s}'", .{ line_num, line });
+                return ParseError.MissingEquals;
+            };
             const key = std.mem.trim(u8, line[0..kv_index], " \t");
             const value = std.mem.trim(u8, line[kv_index + 1 ..], " \t");
+
+            if (active_section == null) {
+                log.err("line {d}: key '{s}' before any section", .{ line_num, key });
+                return ParseError.KeyBeforeSection;
+            }
 
             switch (active_section.?) {
                 Section.collection => {
@@ -214,3 +233,4 @@ test "empty config returns defaults" {
     try testing.expectEqualStrings("auto", config.collection.machine_name);
     try testing.expect(config.llm.endpoint == null);
 }
+
