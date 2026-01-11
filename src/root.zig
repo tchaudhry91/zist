@@ -1,7 +1,6 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 
-pub const config = @import("config.zig");
 pub const history = @import("history.zig");
 
 pub fn bufferedPrint(comptime fmt: []const u8, args: anytype) !void {

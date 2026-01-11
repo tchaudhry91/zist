@@ -2,7 +2,7 @@
 
 ## Project Context
 
-**Project:** zist - Peer-to-peer ZSH command history synchronization tool
+**Project:** zist - Local ZSH history aggregation tool
 **Language:** Zig
 **Owner:** tchaudhry
 **Purpose:** Learning project (user wants to learn Zig and rekindle coding passion)
@@ -161,25 +161,21 @@ passed correctly. Let me know what you find!
 ## Project-Specific Context
 
 ### Key Design Decisions (from zist-design.md):
-- **P2P sync via SSH** - No central server, no daemon
+- **Local aggregation only** - No built-in sync (user handles via rsync, git, etc.)
 - **SQLite storage** - Local DB on each machine
-- **`(machine, timestamp)` primary key** - Automatic deduplication via `INSERT OR IGNORE`
-- **INI config** - User writes parser (~100 LOC), no external library
+- **`(source, timestamp)` primary key** - Automatic deduplication via `INSERT OR IGNORE` (source = absolute file path)
+- **CLI args instead of config** - Pass history files as `zist collect <file>...`
 - **Subsecond timestamps** - Add based on order in history file
-- **JSON for sync protocol** - Use `std.json`
 
 ### Common Questions You'll Likely Get:
 - How to handle allocators in Zig?
-- How to parse JSON with std.json?
-- How to execute SSH commands (use `std.ChildProcess`)
 - How to handle multi-line commands in ZSH history?
 - How to integrate with zig-sqlite?
+- How to parse command line arguments in Zig?
 
 ### Reference These Sections When Relevant:
-- Database schema: zist-design.md lines 79-105
-- Sync protocol: zist-design.md lines 199-231
-- Subsecond timestamps: zist-design.md lines 324-371
-- Configuration format: zist-design.md lines 127-156
+- Database schema: zist-design.md lines 81-104
+- Subsecond timestamps: zist-design.md lines 319-367
 
 ---
 

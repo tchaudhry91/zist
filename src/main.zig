@@ -6,10 +6,13 @@ const version = "0.1.0";
 const Command = enum {
     help,
     version,
+    collect,
+    search,
 };
 
 const ParseError = error{
     InvalidCommand,
+    MissingArgument,
 };
 
 pub fn main() !void {
@@ -18,49 +21,49 @@ pub fn main() !void {
     const allocator = arena.allocator();
 
     const args = try std.process.argsAlloc(allocator);
-    var base_command: []const u8 = "--help";
-    if (args.len > 1) {
-        base_command = args[1];
+    if (args.len < 2) {
+        try print_help();
+        return;
     }
 
-    // Parse Base Command
-    const cmd = parse_base_command(base_command) catch .help;
+    const base_command = args[1];
+
+    const cmd = try parse_base_command(base_command);
 
     switch (cmd) {
         .help => try print_help(),
         .version => try print_version(),
+        .collect => try cmd_collect(allocator, args),
+        .search => try cmd_search(allocator, args),
     }
-    const cfg = try zist.config.Config.parse(allocator, "~/.config/zist/config.ini");
-    _ = cfg;
 }
 
 fn parse_base_command(arg: []const u8) ParseError!Command {
-    if (std.mem.eql(u8, arg, "--help")) {
+    if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
         return .help;
-    } else if (std.mem.eql(u8, arg, "--version")) {
+    } else if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-v")) {
         return .version;
+    } else if (std.mem.eql(u8, arg, "collect")) {
+        return .collect;
+    } else if (std.mem.eql(u8, arg, "search")) {
+        return .search;
     }
     return ParseError.InvalidCommand;
 }
 
 fn print_help() !void {
     const help_text =
-        \\zist - P2P ZSH history sync
+        \\zist - ZSH history aggregation
         \\
-        \\Usage: zist <command> [options]
+        \\Usage: zist <command> [arguments...]
         \\
         \\Commands:
-        \\  collect      Capture commands from ZSH history
-        \\  search       Interactive command search
-        \\  ask          Conversational search using LLM
-        \\  sync         Sync with peer machines
-        \\  serve-sync   Handle incoming sync request (via SSH)
-        \\  install      Set up ZSH integration
-        \\  uninstall    Remove ZSH integration
+        \\  collect <file>...    Parse history files and update database
+        \\  search               Interactive command search
         \\
         \\Options:
-        \\  --help       Show this help
-        \\  --version    Show version
+        \\  --help, -h           Show this help
+        \\  --version, -v        Show version
         \\
     ;
     try zist.bufferedPrint("{s}", .{help_text});
@@ -68,4 +71,27 @@ fn print_help() !void {
 
 fn print_version() !void {
     try zist.bufferedPrint("{s}\n", .{version});
+}
+
+fn cmd_collect(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    _ = allocator;
+    if (args.len < 3) {
+        try zist.bufferedPrint("Error: missing history files\nUsage: zist collect <file>...\n", .{});
+        return error.MissingArgument;
+    }
+
+    const history_files = args[2..];
+    try zist.bufferedPrint("Collecting from {d} files...\n", .{history_files.len});
+
+    for (history_files, 0..) |file, i| {
+        try zist.bufferedPrint("  [{d}] {s}\n", .{ i, file });
+    }
+
+    try zist.bufferedPrint("Collection complete!\n", .{});
+}
+
+fn cmd_search(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    _ = allocator;
+    _ = args;
+    try zist.bufferedPrint("Search not implemented yet\n", .{});
 }
