@@ -63,6 +63,17 @@ func CreateSchema(db *sql.DB) error {
 			content='commands',
 			content_rowid='rowid'
 		);`,
+		// Triggers to keep FTS index in sync automatically
+		`CREATE TRIGGER IF NOT EXISTS commands_ai AFTER INSERT ON commands BEGIN
+			INSERT INTO commands_fts(rowid, command) VALUES (new.rowid, new.command);
+		END;`,
+		`CREATE TRIGGER IF NOT EXISTS commands_ad AFTER DELETE ON commands BEGIN
+			INSERT INTO commands_fts(commands_fts, rowid, command) VALUES ('delete', old.rowid, old.command);
+		END;`,
+		`CREATE TRIGGER IF NOT EXISTS commands_au AFTER UPDATE ON commands BEGIN
+			INSERT INTO commands_fts(commands_fts, rowid, command) VALUES ('delete', old.rowid, old.command);
+			INSERT INTO commands_fts(rowid, command) VALUES (new.rowid, new.command);
+		END;`,
 	}
 
 	for _, query := range queries {
@@ -85,22 +96,15 @@ func InsertCommands(db *sql.DB, commands []Command) (int, int, error) {
 	}
 	defer tx.Rollback()
 
+	// FTS index is updated automatically via triggers
 	insertSQL := `INSERT OR IGNORE INTO commands (source, timestamp, command, duration, cwd, exit_code)
 	              VALUES (?, ?, ?, ?, ?, ?)`
-	insertFTSSQL := `INSERT OR IGNORE INTO commands_fts (rowid, command)
-	                SELECT rowid, command FROM commands WHERE rowid = ?`
 
 	stmt, err := tx.Prepare(insertSQL)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
 	defer stmt.Close()
-
-	ftsStmt, err := tx.Prepare(insertFTSSQL)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to prepare FTS insert statement: %w", err)
-	}
-	defer ftsStmt.Close()
 
 	inserted := 0
 
@@ -117,10 +121,6 @@ func InsertCommands(db *sql.DB, commands []Command) (int, int, error) {
 
 		if rowsAffected > 0 {
 			inserted++
-			rowID, _ := result.LastInsertId()
-			if _, err := ftsStmt.Exec(rowID); err != nil {
-				return 0, 0, fmt.Errorf("failed to insert into FTS: %w", err)
-			}
 		}
 	}
 
@@ -195,32 +195,51 @@ func GetDBStats(db *sql.DB) (map[string]int64, error) {
 }
 
 type SearchResult struct {
-	Command string
-	Source  string
+	Command   string
+	Source    string
+	Timestamp float64
 }
 
-func SearchCommands(db *sql.DB, query string) ([]SearchResult, error) {
+type SearchOptions struct {
+	Query string
+	Limit int
+	Since float64 // Unix timestamp, 0 means no filter
+	Until float64 // Unix timestamp, 0 means no filter
+}
+
+func SearchCommands(db *sql.DB, opts SearchOptions) ([]SearchResult, error) {
 	var results []SearchResult
 
-	var rows *sql.Rows
-	var err error
-
-	if query == "" {
-		rows, err = db.Query(`
-			SELECT command, source FROM commands
-			ORDER BY timestamp DESC
-			LIMIT 100
-		`)
-	} else {
-		ftsQuery := buildFTSQuery(query)
-		rows, err = db.Query(`
-			SELECT command, source FROM commands
-			WHERE rowid IN (SELECT rowid FROM commands_fts WHERE commands_fts MATCH ?)
-			ORDER BY timestamp DESC
-			LIMIT 100
-		`, ftsQuery)
+	if opts.Limit <= 0 {
+		opts.Limit = 500
 	}
 
+	var queryBuilder strings.Builder
+	var args []interface{}
+
+	queryBuilder.WriteString("SELECT command, source, timestamp FROM commands WHERE 1=1")
+
+	// FTS filter
+	if opts.Query != "" {
+		ftsQuery := buildFTSQuery(opts.Query)
+		queryBuilder.WriteString(" AND rowid IN (SELECT rowid FROM commands_fts WHERE commands_fts MATCH ?)")
+		args = append(args, ftsQuery)
+	}
+
+	// Time range filters
+	if opts.Since > 0 {
+		queryBuilder.WriteString(" AND timestamp >= ?")
+		args = append(args, opts.Since)
+	}
+	if opts.Until > 0 {
+		queryBuilder.WriteString(" AND timestamp <= ?")
+		args = append(args, opts.Until)
+	}
+
+	queryBuilder.WriteString(" ORDER BY timestamp DESC LIMIT ?")
+	args = append(args, opts.Limit)
+
+	rows, err := db.Query(queryBuilder.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search commands: %w", err)
 	}
@@ -228,7 +247,7 @@ func SearchCommands(db *sql.DB, query string) ([]SearchResult, error) {
 
 	for rows.Next() {
 		var result SearchResult
-		if err := rows.Scan(&result.Command, &result.Source); err != nil {
+		if err := rows.Scan(&result.Command, &result.Source, &result.Timestamp); err != nil {
 			return nil, fmt.Errorf("failed to scan command: %w", err)
 		}
 		results = append(results, result)

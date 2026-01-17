@@ -3,14 +3,28 @@ zist - Local ZSH history aggregation tool
 Quick start:
   task build                          # Build the binary
   task test                           # Run tests
-  task collect -- ~/.zsh_history      # Collect history
-  task collect -- ~/.zsh_history ~/.claude/claude_zsh_history  # Collect multiple files
-  task collect -- ~/synced_hists/     # Collect all *zsh_history files from directory
-  task search -- docker                # Search commands
+  zist collect ~/.zsh_history         # Collect history
+  zist collect ~/synced_hists/        # Collect recursively from directory
+  zist search docker                  # Search with fzf + preview pane
+  zist search --since 2024-01-01 git  # Search with time filter
+  zist --version                      # Show version
+
+Search flags:
+  --limit N                           # Max results (default: 500)
+  --since DATE                        # After date (YYYY-MM-DD)
+  --until DATE                        # Before date (YYYY-MM-DD)
+
+Collect flags:
+  --quiet                             # Suppress output
+
+ZSH integration:
+  zist install                        # Add Ctrl+X binding to ~/.zshrc
+  zist install --history-file PATH    # Use custom history file
+  zist uninstall                      # Remove integration
 
 Development:
   task fmt                            # Format code
-  task check                          # Run all checks
+  task check                          # Run all checks (fmt, vet, test)
   task deps-update                    # Update dependencies
 
 Database:
@@ -21,7 +35,6 @@ Database:
 Installation:
   task install-user                   # Install to ~/go/bin
   task install                        # Install to /usr/local/bin (requires sudo)
-  task uninstall                      # Remove installed binary
 
 Other:
   task clean                          # Clean build artifacts

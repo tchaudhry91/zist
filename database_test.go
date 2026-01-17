@@ -158,7 +158,7 @@ func TestSearchCommands(t *testing.T) {
 	}
 
 	t.Run("all commands", func(t *testing.T) {
-		results, err := SearchCommands(db, "")
+		results, err := SearchCommands(db, SearchOptions{})
 		if err != nil {
 			t.Fatalf("SearchCommands() error = %v", err)
 		}
@@ -177,7 +177,7 @@ func TestSearchCommands(t *testing.T) {
 	})
 
 	t.Run("fts search", func(t *testing.T) {
-		results, err := SearchCommands(db, "git")
+		results, err := SearchCommands(db, SearchOptions{Query: "git"})
 		if err != nil {
 			t.Fatalf("SearchCommands() error = %v", err)
 		}
@@ -206,13 +206,61 @@ func TestSearchCommands(t *testing.T) {
 	})
 
 	t.Run("no results", func(t *testing.T) {
-		results, err := SearchCommands(db, "nonexistent")
+		results, err := SearchCommands(db, SearchOptions{Query: "nonexistent"})
 		if err != nil {
 			t.Fatalf("SearchCommands() error = %v", err)
 		}
 
 		if len(results) != 0 {
 			t.Errorf("SearchCommands('nonexistent') returned %d results, want 0", len(results))
+		}
+	})
+
+	t.Run("with limit", func(t *testing.T) {
+		results, err := SearchCommands(db, SearchOptions{Limit: 2})
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("SearchCommands() with limit=2 returned %d results, want 2", len(results))
+		}
+	})
+
+	t.Run("with since filter", func(t *testing.T) {
+		results, err := SearchCommands(db, SearchOptions{Since: 1500.0})
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 1 {
+			t.Errorf("SearchCommands() with since=1500 returned %d results, want 1", len(results))
+		}
+
+		if len(results) > 0 && results[0].Command != "echo hello" {
+			t.Errorf("SearchCommands() with since filter returned wrong command: %s", results[0].Command)
+		}
+	})
+
+	t.Run("with until filter", func(t *testing.T) {
+		results, err := SearchCommands(db, SearchOptions{Until: 1001.5})
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("SearchCommands() with until=1001.5 returned %d results, want 2", len(results))
+		}
+	})
+
+	t.Run("with since and until", func(t *testing.T) {
+		results, err := SearchCommands(db, SearchOptions{Since: 1000.5, Until: 1002.5})
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("SearchCommands() with time range returned %d results, want 2", len(results))
 		}
 	})
 }

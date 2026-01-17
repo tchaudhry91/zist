@@ -8,48 +8,57 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 )
 
+const version = "0.1.0"
+
 func main() {
 	rootFlags := ff.NewFlagSet("zist")
 	helpFlag := rootFlags.BoolLong("help", "h")
+	versionFlag := rootFlags.BoolLong("version", "v")
 
 	collectFlags := ff.NewFlagSet("collect").SetParent(rootFlags)
 	dbPath := collectFlags.StringLong("db", "~/.zist/zist.db", "SQLite database path")
+	quietFlag := collectFlags.BoolLong("quiet", "q")
 	collectCmd := &ff.Command{
 		Name:      "collect",
-		Usage:     "zist collect [--db PATH] HISTORY_FILE... | DIRECTORY...",
+		Usage:     "zist collect [--db PATH] [-q] HISTORY_FILE... | DIRECTORY...",
 		ShortHelp: "Collect commands from ZSH history files (or all *zsh_history files in a directory)",
 		Flags:     collectFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return runCollect(ctx, *dbPath, args)
+			return runCollect(ctx, *dbPath, args, *quietFlag)
 		},
 	}
 
 	searchFlags := ff.NewFlagSet("search").SetParent(rootFlags)
 	dbPathSearch := searchFlags.StringLong("db", "~/.zist/zist.db", "SQLite database path")
+	limitFlag := searchFlags.IntLong("limit", 500, "Maximum number of results")
+	sinceFlag := searchFlags.StringLong("since", "", "Only show commands after this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)")
+	untilFlag := searchFlags.StringLong("until", "", "Only show commands before this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)")
 	searchCmd := &ff.Command{
 		Name:      "search",
-		Usage:     "zist search [--db PATH] [QUERY]",
+		Usage:     "zist search [--db PATH] [--limit N] [--since DATE] [--until DATE] [QUERY]",
 		ShortHelp: "Search command history interactively with fzf",
 		Flags:     searchFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return runSearch(ctx, *dbPathSearch, args)
+			return runSearch(ctx, *dbPathSearch, args, *limitFlag, *sinceFlag, *untilFlag)
 		},
 	}
 
 	installFlags := ff.NewFlagSet("install").SetParent(rootFlags)
+	historyFile := installFlags.StringLong("history-file", "~/.zsh_history", "History file to collect from in precmd hook")
 	installCmd := &ff.Command{
 		Name:      "install",
-		Usage:     "zist install",
-		ShortHelp: "Install ZSH integration (Ctrl+X binding)",
+		Usage:     "zist install [--history-file PATH]",
+		ShortHelp: "Install ZSH integration (Ctrl+X binding and precmd hook)",
 		Flags:     installFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return runInstall(ctx)
+			return runInstall(ctx, *historyFile)
 		},
 	}
 
@@ -80,6 +89,10 @@ func main() {
 	}
 
 	if err := rootCmd.ParseAndRun(context.Background(), os.Args[1:]); err != nil {
+		if *versionFlag {
+			fmt.Printf("zist version %s\n", version)
+			return
+		}
 		if *helpFlag {
 			fmt.Println(ffhelp.Command(rootCmd))
 			return
@@ -103,15 +116,18 @@ func expandHistoryPaths(paths []string) ([]string, error) {
 		}
 
 		if fileInfo.IsDir() {
-			entries, err := os.ReadDir(path)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read directory %s: %w", path, err)
-			}
-
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), "zsh_history") {
-					files = append(files, filepath.Join(path, entry.Name()))
+			// Recursively walk the directory tree
+			err := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+				if err != nil {
+					return err
 				}
+				if !d.IsDir() && strings.HasSuffix(d.Name(), "zsh_history") {
+					files = append(files, p)
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to walk directory %s: %w", path, err)
 			}
 		} else {
 			files = append(files, path)
@@ -121,7 +137,7 @@ func expandHistoryPaths(paths []string) ([]string, error) {
 	return files, nil
 }
 
-func runCollect(ctx context.Context, dbPath string, historyFiles []string) error {
+func runCollect(ctx context.Context, dbPath string, historyFiles []string, quiet bool) error {
 	expandedFiles, err := expandHistoryPaths(historyFiles)
 	if err != nil {
 		return err
@@ -131,7 +147,9 @@ func runCollect(ctx context.Context, dbPath string, historyFiles []string) error
 		return fmt.Errorf("no history files found")
 	}
 
-	fmt.Printf("Collecting from %d file(s) into DB: %s\n", len(expandedFiles), dbPath)
+	if !quiet {
+		fmt.Printf("Collecting from %d file(s) into DB: %s\n", len(expandedFiles), dbPath)
+	}
 
 	db, err := InitDB(dbPath)
 	if err != nil {
@@ -145,39 +163,77 @@ func runCollect(ctx context.Context, dbPath string, historyFiles []string) error
 	for _, file := range expandedFiles {
 		history, err := ParseHistoryFile(file)
 		if err != nil {
-			fmt.Printf("Error parsing %s: %v\n", file, err)
+			if !quiet {
+				fmt.Printf("Error parsing %s: %v\n", file, err)
+			}
 			continue
 		}
 
 		inserted, ignored, err := InsertCommandsBatch(db, history.Commands, 500)
 		if err != nil {
-			fmt.Printf("Error inserting from %s: %v\n", file, err)
+			if !quiet {
+				fmt.Printf("Error inserting from %s: %v\n", file, err)
+			}
 			continue
 		}
 
-		fmt.Printf("%s: %d parsed, %d new, %d skipped\n", file, len(history.Commands), inserted, ignored)
+		if !quiet {
+			fmt.Printf("%s: %d parsed, %d new, %d skipped\n", file, len(history.Commands), inserted, ignored)
+		}
 
 		totalInserted += inserted
 		totalIgnored += ignored
 	}
 
-	stats, err := GetDBStats(db)
-	if err != nil {
-		fmt.Printf("Warning: could not get DB stats: %v\n", err)
-	} else {
-		fmt.Printf("\nDatabase stats:\n")
-		fmt.Printf("  Total commands: %d\n", stats["total_commands"])
-		fmt.Printf("  Total sources: %d\n", stats["total_sources"])
-	}
+	if !quiet {
+		stats, err := GetDBStats(db)
+		if err != nil {
+			fmt.Printf("Warning: could not get DB stats: %v\n", err)
+		} else {
+			fmt.Printf("\nDatabase stats:\n")
+			fmt.Printf("  Total commands: %d\n", stats["total_commands"])
+			fmt.Printf("  Total sources: %d\n", stats["total_sources"])
+		}
 
-	fmt.Printf("\n✓ Collection complete: %d new, %d skipped\n", totalInserted, totalIgnored)
+		fmt.Printf("\nCollection complete: %d new, %d skipped\n", totalInserted, totalIgnored)
+	}
 	return nil
 }
 
-func runSearch(ctx context.Context, dbPath string, args []string) error {
+func parseDateTime(s string) (float64, error) {
+	if s == "" {
+		return 0, nil
+	}
+
+	// Try full datetime format first
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local)
+	if err == nil {
+		return float64(t.Unix()), nil
+	}
+
+	// Try date-only format (use start of day)
+	t, err = time.ParseInLocation("2006-01-02", s, time.Local)
+	if err == nil {
+		return float64(t.Unix()), nil
+	}
+
+	return 0, fmt.Errorf("invalid date format: %s (use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)", s)
+}
+
+func runSearch(ctx context.Context, dbPath string, args []string, limit int, since, until string) error {
 	query := ""
 	if len(args) > 0 {
 		query = args[0]
+	}
+
+	sinceTs, err := parseDateTime(since)
+	if err != nil {
+		return err
+	}
+
+	untilTs, err := parseDateTime(until)
+	if err != nil {
+		return err
 	}
 
 	db, err := InitDB(dbPath)
@@ -186,7 +242,12 @@ func runSearch(ctx context.Context, dbPath string, args []string) error {
 	}
 	defer db.Close()
 
-	commands, err := SearchCommands(db, query)
+	commands, err := SearchCommands(db, SearchOptions{
+		Query: query,
+		Limit: limit,
+		Since: sinceTs,
+		Until: untilTs,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to search: %w", err)
 	}
@@ -199,7 +260,13 @@ func runSearch(ctx context.Context, dbPath string, args []string) error {
 		return fmt.Errorf("fzf not found in PATH, please install it first")
 	}
 
-	cmd := exec.CommandContext(ctx, "fzf")
+	// fzf with preview pane showing source and timestamp
+	cmd := exec.CommandContext(ctx, "fzf",
+		"--delimiter=\t",
+		"--with-nth=1",           // Only display the command (field 1)
+		"--preview", "echo -e \"Source: {2}\\nTime:   {3}\\n\\nCommand:\\n{1}\"",
+		"--preview-window=right:40%:wrap",
+	)
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
@@ -209,7 +276,9 @@ func runSearch(ctx context.Context, dbPath string, args []string) error {
 
 	go func() {
 		for _, result := range commands {
-			fmt.Fprintf(stdin, "%s|||%s\n", result.Command, result.Source)
+			// Tab-separated: command \t source \t timestamp
+			formattedTime := FormatTimestamp(result.Timestamp)
+			fmt.Fprintf(stdin, "%s\t%s\t%s\n", result.Command, result.Source, formattedTime)
 		}
 		stdin.Close()
 	}()
@@ -230,14 +299,16 @@ func runSearch(ctx context.Context, dbPath string, args []string) error {
 		return nil
 	}
 
-	parts := strings.SplitN(selected, "|||", 2)
+	// Extract just the command (first tab-separated field)
+	parts := strings.SplitN(selected, "\t", 2)
 	if len(parts) >= 1 {
 		fmt.Println(parts[0])
 	}
 	return nil
 }
 
-const zshIntegration = `# zist integration - Ctrl+X for fuzzy search
+const zshIntegrationTemplate = `# BEGIN zist integration
+# Ctrl+X for fuzzy history search
 _zist_search() {
   local buf=$LBUFFER
   local selected=$(zist search "$buf" 2>/dev/null)
@@ -249,24 +320,16 @@ _zist_search() {
 zle -N _zist_search
 bindkey '^X' _zist_search
 
-# zist precmd hook - collect history after each command
-if [[ -z "$(declare -f precmd)" ]]; then
-  precmd() {
-    zist collect &
-  }
-else
-  # Append to existing precmd function
-  precmd() {
-    zist collect &
-    ret=$?
-    Oldprecmd
-    return $ret
-  }
-  Oldprecmd=precmd
-fi
+# Collect history after each command
+_zist_precmd() {
+  zist collect %s >/dev/null 2>&1 &
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _zist_precmd
+# END zist integration
 `
 
-func runInstall(ctx context.Context) error {
+func runInstall(ctx context.Context, historyFile string) error {
 	usr, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
@@ -279,24 +342,27 @@ func runInstall(ctx context.Context) error {
 		return fmt.Errorf("failed to read ~/.zshrc: %w", err)
 	}
 
-	if strings.Contains(string(content), "# zist integration") {
-		fmt.Println("✓ ZSH integration already installed")
-		fmt.Printf("  Run: source %s\n", zshrcPath)
-		fmt.Println("  Then press Ctrl+X to search history")
+	if strings.Contains(string(content), "# BEGIN zist integration") {
+		fmt.Println("ZSH integration already installed")
+		fmt.Println("  To reinstall, run: zist uninstall && zist install")
+		fmt.Printf("  Or source %s and press Ctrl+X to search history\n", zshrcPath)
 		return nil
 	}
 
+	zshIntegration := fmt.Sprintf(zshIntegrationTemplate, historyFile)
+
 	newContent := string(content)
-	if !strings.HasSuffix(strings.TrimSpace(newContent), "\n") {
+	if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
 		newContent += "\n"
 	}
-	newContent += zshIntegration
+	newContent += "\n" + zshIntegration
 
 	if err := os.WriteFile(zshrcPath, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to write ~/.zshrc: %w", err)
 	}
 
-	fmt.Println("✓ ZSH integration installed")
+	fmt.Println("ZSH integration installed")
+	fmt.Printf("  History file: %s\n", historyFile)
 	fmt.Printf("  Run: source %s\n", zshrcPath)
 	fmt.Println("  Then press Ctrl+X to search history")
 	return nil
@@ -315,58 +381,46 @@ func runUninstall(ctx context.Context) error {
 		return fmt.Errorf("failed to read ~/.zshrc: %w", err)
 	}
 
-	if !strings.Contains(string(content), "# zist integration") {
-		fmt.Println("✓ ZSH integration not found")
+	contentStr := string(content)
+
+	// Find the BEGIN and END markers
+	beginMarker := "# BEGIN zist integration"
+	endMarker := "# END zist integration"
+
+	beginIdx := strings.Index(contentStr, beginMarker)
+	if beginIdx == -1 {
+		fmt.Println("ZSH integration not found")
 		return nil
 	}
 
-	lines := strings.Split(string(content), "\n")
-	newLines := []string{}
-	skipUntilMatch := false
-
-	for _, line := range lines {
-		if strings.Contains(line, "# zist integration") {
-			skipUntilMatch = true
-			continue
-		}
-
-		if skipUntilMatch {
-			if strings.HasPrefix(line, "bindkey '^X'") ||
-				strings.HasPrefix(line, "zle -N _zist_search") ||
-				strings.HasPrefix(line, "_zist_search() {") ||
-				strings.HasPrefix(line, "  local buf=") ||
-				strings.HasPrefix(line, "  local selected=") ||
-				strings.HasPrefix(line, "  if [[ -n") ||
-				strings.HasPrefix(line, "  fi") ||
-				strings.HasPrefix(line, "  zle reset-prompt") ||
-				strings.HasPrefix(line, "}") ||
-				strings.HasPrefix(line, "if [[ -z \"$(declare -f") ||
-				strings.HasPrefix(line, "  precmd() {") ||
-				strings.HasPrefix(line, "    zist collect") ||
-				strings.HasPrefix(line, "    ret=$") ||
-				strings.HasPrefix(line, "    Oldprecmd=") ||
-				strings.HasPrefix(line, "    return $ret") ||
-				strings.HasPrefix(line, "  }") ||
-				strings.HasPrefix(line, "else") ||
-				strings.HasPrefix(line, "  # Append to existing") ||
-				strings.HasPrefix(line, "  }") {
-				continue
-			}
-			if strings.TrimSpace(line) == "}" {
-				skipUntilMatch = false
-				continue
-			}
-		}
-
-		newLines = append(newLines, line)
+	endIdx := strings.Index(contentStr, endMarker)
+	if endIdx == -1 {
+		return fmt.Errorf("found BEGIN marker but no END marker - please manually remove zist integration from %s", zshrcPath)
 	}
 
-	newContent := strings.Join(newLines, "\n")
+	// Remove the block including markers and the trailing newline
+	endIdx += len(endMarker)
+	if endIdx < len(contentStr) && contentStr[endIdx] == '\n' {
+		endIdx++
+	}
+
+	// Also remove a leading newline if present
+	if beginIdx > 0 && contentStr[beginIdx-1] == '\n' {
+		beginIdx--
+	}
+
+	newContent := contentStr[:beginIdx] + contentStr[endIdx:]
+
+	// Clean up any double newlines left behind
+	for strings.Contains(newContent, "\n\n\n") {
+		newContent = strings.ReplaceAll(newContent, "\n\n\n", "\n\n")
+	}
+
 	if err := os.WriteFile(zshrcPath, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to write ~/.zshrc: %w", err)
 	}
 
-	fmt.Println("✓ ZSH integration removed")
+	fmt.Println("ZSH integration removed")
 	fmt.Printf("  Run: source %s\n", zshrcPath)
 	return nil
 }

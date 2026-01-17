@@ -7,13 +7,14 @@ Local ZSH history aggregation tool. Collect commands from multiple ZSH history f
 - **Multiple machines**: Collect history from all your machines into one database
 - **Shared access**: Sync with rsync, git, or any file sharing mechanism
 - **Instant search**: Query 10,000+ commands in milliseconds with SQLite FTS5
-- **Ctrl+X for fuzzy search**: Interactive fuzzy search with fzf
+- **Ctrl+X for fuzzy search**: Interactive fuzzy search with fzf and preview pane
 - **Automatic deduplication**: `(source, timestamp)` primary key prevents duplicates
 
 ## Features
 
-- **Collect** from files or directories
-- **Search** with full-text search and fuzzy matching
+- **Collect** from files or directories (recursive search)
+- **Search** with full-text search, fuzzy matching, and time filtering
+- **Preview pane** shows source file and timestamp while browsing
 - **Interactive** ZSH integration (Ctrl+X)
 - **Batch inserts** with transactions
 - **Metadata storage**: duration, cwd, exit code
@@ -57,14 +58,20 @@ zist collect ~/.zsh_history
 # Collect multiple files
 zist collect ~/.zsh_history ~/.claude/claude_zsh_history
 
-# Collect all *zsh_history files from directory
+# Collect all *zsh_history files from directory (recursive)
 zist collect ~/synced_hists/
 
-# Search commands (requires fzf)
+# Search commands (requires fzf) - shows preview pane with source/timestamp
 zist search docker
+
+# Search with time filter
+zist search --since 2024-01-01 git
 
 # Interactive search (type before Ctrl+X)
 docker<Ctrl+X>  # opens fzf with "docker" as query
+
+# Check version
+zist --version
 ```
 
 ## Commands
@@ -74,26 +81,29 @@ docker<Ctrl+X>  # opens fzf with "docker" as query
 Collect commands from ZSH history files.
 
 ```bash
-zist collect [--db PATH] HISTORY_FILE... | DIRECTORY...
+zist collect [--db PATH] [--quiet] HISTORY_FILE... | DIRECTORY...
 ```
 
 - **HISTORY_FILE**: ZSH history file to parse
-- **DIRECTORY**: Find all `*zsh_history` files in directory
+- **DIRECTORY**: Recursively find all `*zsh_history` files
 - **--db**: Database path (default: `~/.zist/zist.db`)
+- **--quiet**: Suppress output (useful for scripts/automation)
 
 ### search
 
 Search command history interactively with fzf.
 
 ```bash
-zist search [--db PATH] [QUERY]
+zist search [--db PATH] [--limit N] [--since DATE] [--until DATE] [QUERY]
 ```
 
 - **QUERY**: Initial search query for fzf (optional)
 - **--db**: Database path (default: `~/.zist/zist.db`)
+- **--limit**: Maximum number of results (default: 500)
+- **--since**: Only show commands after this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)
+- **--until**: Only show commands before this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)
 
-Note: fzf displays commands with their source file (e.g., `git status|||~/.zsh_history`).
-Only the command is returned on selection.
+The search displays a **preview pane** showing the source file and timestamp for the highlighted command.
 
 ## ZSH Integration
 
@@ -104,13 +114,19 @@ zist install
 source ~/.zshrc
 ```
 
+By default, the precmd hook collects from `~/.zsh_history`. To use a different file:
+
+```bash
+zist install --history-file '~/.custom_zsh_history'
+```
+
 Now press **Ctrl+X** to search across all aggregated history with fuzzy matching.
 
 **What it does:**
 - Uses `$LBUFFER` (what you typed before Ctrl+X) as initial query
-- Opens fzf with all commands from database
+- Opens fzf with all commands from database (with preview pane)
 - Places selected command in buffer for editing
-- precmd hook saves executed command to history
+- precmd hook automatically collects history after each command
 
 **Uninstall:**
 
@@ -134,11 +150,17 @@ CREATE TABLE commands (
 CREATE INDEX idx_timestamp ON commands(timestamp DESC);
 CREATE INDEX idx_source ON commands(source);
 
+-- Full-text search index
 CREATE VIRTUAL TABLE commands_fts USING fts5(
     command,
     content='commands',
     content_rowid='rowid'
 );
+
+-- Triggers keep FTS index in sync automatically
+CREATE TRIGGER commands_ai AFTER INSERT ON commands ...
+CREATE TRIGGER commands_ad AFTER DELETE ON commands ...
+CREATE TRIGGER commands_au AFTER UPDATE ON commands ...
 ```
 
 ## Development
