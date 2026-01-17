@@ -135,6 +135,88 @@ func TestGetDBStats(t *testing.T) {
 	}
 }
 
+func TestSearchCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	db, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB() error = %v", err)
+	}
+	defer db.Close()
+
+	commands := []Command{
+		{Source: "/file1", Timestamp: 1000.0, Command: "ls -la"},
+		{Source: "/file1", Timestamp: 1001.0, Command: "git status"},
+		{Source: "/file1", Timestamp: 1002.0, Command: "git commit"},
+		{Source: "/file2", Timestamp: 2000.0, Command: "echo hello"},
+	}
+
+	_, _, err = InsertCommands(db, commands)
+	if err != nil {
+		t.Fatalf("InsertCommands() error = %v", err)
+	}
+
+	t.Run("all commands", func(t *testing.T) {
+		results, err := SearchCommands(db, "")
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 4 {
+			t.Errorf("SearchCommands() with empty query returned %d results, want 4", len(results))
+		}
+
+		if results[0].Command != "echo hello" {
+			t.Errorf("SearchCommands()[0].Command = %s, want 'echo hello' (most recent)", results[0].Command)
+		}
+
+		if results[0].Source != "/file2" {
+			t.Errorf("SearchCommands()[0].Source = %s, want '/file2'", results[0].Source)
+		}
+	})
+
+	t.Run("fts search", func(t *testing.T) {
+		results, err := SearchCommands(db, "git")
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 2 {
+			t.Errorf("SearchCommands('git') returned %d results, want 2", len(results))
+		}
+
+		foundGitStatus := false
+		foundGitCommit := false
+		for _, r := range results {
+			if r.Command == "git status" && r.Source == "/file1" {
+				foundGitStatus = true
+			}
+			if r.Command == "git commit" && r.Source == "/file1" {
+				foundGitCommit = true
+			}
+		}
+
+		if !foundGitStatus {
+			t.Errorf("SearchCommands('git') did not find 'git status' from /file1")
+		}
+		if !foundGitCommit {
+			t.Errorf("SearchCommands('git') did not find 'git commit' from /file1")
+		}
+	})
+
+	t.Run("no results", func(t *testing.T) {
+		results, err := SearchCommands(db, "nonexistent")
+		if err != nil {
+			t.Fatalf("SearchCommands() error = %v", err)
+		}
+
+		if len(results) != 0 {
+			t.Errorf("SearchCommands('nonexistent') returned %d results, want 0", len(results))
+		}
+	})
+}
+
 func TestExpandTilde(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -193,3 +193,47 @@ func GetDBStats(db *sql.DB) (map[string]int64, error) {
 
 	return stats, nil
 }
+
+type SearchResult struct {
+	Command string
+	Source  string
+}
+
+func SearchCommands(db *sql.DB, query string) ([]SearchResult, error) {
+	var results []SearchResult
+
+	var rows *sql.Rows
+	var err error
+
+	if query == "" {
+		rows, err = db.Query(`
+			SELECT command, source FROM commands
+			ORDER BY timestamp DESC
+		`)
+	} else {
+		rows, err = db.Query(`
+			SELECT command, source FROM commands
+			WHERE rowid IN (SELECT rowid FROM commands_fts WHERE commands_fts MATCH ?)
+			ORDER BY timestamp DESC
+		`, query)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to search commands: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.Command, &result.Source); err != nil {
+			return nil, fmt.Errorf("failed to scan command: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
+	}
+
+	return results, nil
+}

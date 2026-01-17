@@ -42,15 +42,15 @@ tasks:
     desc: Search command history
     cmd: task build && ./{{.BUILD_DIR}}/{{.BINARY_NAME}} search {{.CLI_ARGS}}
 
-  install:
-    desc: Install zist to /usr/local/bin
+  install-binary:
+    desc: Install zist binary to /usr/local/bin
     cmd: sudo install -m 755 {{.BUILD_DIR}}/{{.BINARY_NAME}} /usr/local/bin/{{.BINARY_NAME}}
 
   install-user:
-    desc: Install zist to ~/go/bin
+    desc: Install zist binary to ~/go/bin
     cmd: mkdir -p ~/go/bin && install -m 755 {{.BUILD_DIR}}/{{.BINARY_NAME}} ~/go/bin/{{.BINARY_NAME}}
 
-  uninstall:
+  uninstall-binary:
     desc: Remove installed zist binary
     cmd: rm -f /usr/local/bin/{{.BINARY_NAME}} ~/go/bin/{{.BINARY_NAME}}
 
