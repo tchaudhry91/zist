@@ -52,14 +52,15 @@ export PATH="$HOME/go/bin:$PATH"
 ## Quick Start
 
 ```bash
-# Collect history
-zist collect ~/.zsh_history
+# Set up history sync directory (see helpers/setup-history-sync.sh)
+mkdir -p ~/.histories/$(hostname)
+# Move history files there and symlink back
 
-# Collect multiple files
-zist collect ~/.zsh_history ~/.claude/claude_zsh_history
+# Collect from default location (~/.histories)
+zist collect
 
-# Collect all *zsh_history files from directory (recursive)
-zist collect ~/synced_hists/
+# Or collect from specific files/directories
+zist collect ~/.zsh_history ~/other_histories/
 
 # Search commands (requires fzf) - shows preview pane with source/timestamp
 zist search docker
@@ -81,13 +82,14 @@ zist --version
 Collect commands from ZSH history files.
 
 ```bash
-zist collect [--db PATH] [--quiet] HISTORY_FILE... | DIRECTORY...
+zist collect [--db PATH] [--quiet] [PATH...]
 ```
 
-- **HISTORY_FILE**: ZSH history file to parse
-- **DIRECTORY**: Recursively find all `*zsh_history` files
+- **PATH**: History file or directory to search (default: `~/.histories`)
 - **--db**: Database path (default: `~/.zist/zist.db`)
 - **--quiet**: Suppress output (useful for scripts/automation)
+
+Directories are searched recursively for `*zsh_history` files.
 
 ### search
 
@@ -114,19 +116,13 @@ zist install
 source ~/.zshrc
 ```
 
-By default, the precmd hook collects from `~/.zsh_history`. To use a different file:
-
-```bash
-zist install --history-file '~/.custom_zsh_history'
-```
-
 Now press **Ctrl+X** to search across all aggregated history with fuzzy matching.
 
 **What it does:**
 - Uses `$LBUFFER` (what you typed before Ctrl+X) as initial query
 - Opens fzf with all commands from database (with preview pane)
 - Places selected command in buffer for editing
-- precmd hook automatically collects history after each command
+- precmd hook automatically collects from `~/.histories` after each command
 
 **Uninstall:**
 

@@ -3,8 +3,8 @@ zist - Local ZSH history aggregation tool
 Quick start:
   task build                          # Build the binary
   task test                           # Run tests
-  zist collect ~/.zsh_history         # Collect history
-  zist collect ~/synced_hists/        # Collect recursively from directory
+  zist collect                        # Collect from ~/.histories (default)
+  zist collect ~/other/               # Collect from specific directory
   zist search docker                  # Search with fzf + preview pane
   zist search --since 2024-01-01 git  # Search with time filter
   zist --version                      # Show version
@@ -19,8 +19,10 @@ Collect flags:
 
 ZSH integration:
   zist install                        # Add Ctrl+X binding to ~/.zshrc
-  zist install --history-file PATH    # Use custom history file
   zist uninstall                      # Remove integration
+
+History sync setup:
+  helpers/setup-history-sync.sh       # Set up ~/.histories/<hostname>/
 
 Development:
   task fmt                            # Format code

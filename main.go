@@ -27,8 +27,8 @@ func main() {
 	quietFlag := collectFlags.BoolLong("quiet", "q")
 	collectCmd := &ff.Command{
 		Name:      "collect",
-		Usage:     "zist collect [--db PATH] [-q] HISTORY_FILE... | DIRECTORY...",
-		ShortHelp: "Collect commands from ZSH history files (or all *zsh_history files in a directory)",
+		Usage:     "zist collect [--db PATH] [--quiet] [PATH...]",
+		ShortHelp: "Collect commands from ZSH history files (default: ~/.histories)",
 		Flags:     collectFlags,
 		Exec: func(ctx context.Context, args []string) error {
 			return runCollect(ctx, *dbPath, args, *quietFlag)
@@ -51,14 +51,13 @@ func main() {
 	}
 
 	installFlags := ff.NewFlagSet("install").SetParent(rootFlags)
-	historyFile := installFlags.StringLong("history-file", "~/.zsh_history", "History file to collect from in precmd hook")
 	installCmd := &ff.Command{
 		Name:      "install",
-		Usage:     "zist install [--history-file PATH]",
+		Usage:     "zist install",
 		ShortHelp: "Install ZSH integration (Ctrl+X binding and precmd hook)",
 		Flags:     installFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return runInstall(ctx, *historyFile)
+			return runInstall(ctx)
 		},
 	}
 
@@ -138,6 +137,11 @@ func expandHistoryPaths(paths []string) ([]string, error) {
 }
 
 func runCollect(ctx context.Context, dbPath string, historyFiles []string, quiet bool) error {
+	// Default to ~/.histories if no paths specified
+	if len(historyFiles) == 0 {
+		historyFiles = []string{expandTilde("~/.histories")}
+	}
+
 	expandedFiles, err := expandHistoryPaths(historyFiles)
 	if err != nil {
 		return err
@@ -307,7 +311,7 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 	return nil
 }
 
-const zshIntegrationTemplate = `# BEGIN zist integration
+const zshIntegration = `# BEGIN zist integration
 # Ctrl+X for fuzzy history search
 _zist_search() {
   local buf=$LBUFFER
@@ -322,14 +326,14 @@ bindkey '^X' _zist_search
 
 # Collect history after each command (subshell suppresses job notifications)
 _zist_precmd() {
-  (zist collect %s >/dev/null 2>&1 &)
+  (zist collect --quiet &)
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _zist_precmd
 # END zist integration
 `
 
-func runInstall(ctx context.Context, historyFile string) error {
+func runInstall(ctx context.Context) error {
 	usr, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
@@ -349,8 +353,6 @@ func runInstall(ctx context.Context, historyFile string) error {
 		return nil
 	}
 
-	zshIntegration := fmt.Sprintf(zshIntegrationTemplate, historyFile)
-
 	newContent := string(content)
 	if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
 		newContent += "\n"
@@ -362,7 +364,7 @@ func runInstall(ctx context.Context, historyFile string) error {
 	}
 
 	fmt.Println("ZSH integration installed")
-	fmt.Printf("  History file: %s\n", historyFile)
+	fmt.Println("  Collects from: ~/.histories (default)")
 	fmt.Printf("  Run: source %s\n", zshrcPath)
 	fmt.Println("  Then press Ctrl+X to search history")
 	return nil
