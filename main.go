@@ -15,7 +15,8 @@ import (
 	"github.com/peterbourgon/ff/v4/ffhelp"
 )
 
-const version = "0.1.0"
+// version is set via ldflags during build
+var version = "dev"
 
 func main() {
 	rootFlags := ff.NewFlagSet("zist")

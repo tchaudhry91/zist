@@ -52,9 +52,10 @@ export PATH="$HOME/go/bin:$PATH"
 ## Quick Start
 
 ```bash
-# Set up history sync directory (see helpers/setup-history-sync.sh)
+# Set up history sync directory
 mkdir -p ~/.histories/$(hostname)
-# Move history files there and symlink back
+mv ~/.zsh_history ~/.histories/$(hostname)/
+ln -s ~/.histories/$(hostname)/.zsh_history ~/.zsh_history
 
 # Collect from default location (~/.histories)
 zist collect

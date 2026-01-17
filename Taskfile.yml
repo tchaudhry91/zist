@@ -6,6 +6,7 @@ vars:
   BINARY_NAME: zist
   BUILD_DIR: bin
   DB_PATH: ~/.zist/zist.db
+  VERSION: 0.1.0
 
 tasks:
   default:
@@ -14,7 +15,7 @@ tasks:
 
   build:
     desc: Build zist binary
-    cmd: mkdir -p {{.BUILD_DIR}} && go build -tags fts5 -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
+    cmd: mkdir -p {{.BUILD_DIR}} && go build -tags fts5 -ldflags="-X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
     sources:
       - "*.go"
       - go.mod
@@ -102,14 +103,17 @@ tasks:
     cmd: rm -f {{.DB_PATH}} && echo "Database deleted. Run 'task collect' to rebuild."
 
   release:
-    desc: Build release binaries for multiple platforms
+    desc: Build release binaries using goreleaser (snapshot)
+    cmd: goreleaser release --snapshot --clean
+
+  release-local:
+    desc: Build release binaries locally (no goreleaser)
     cmd: |
       mkdir -p {{.BUILD_DIR}}/release
-      GOOS=linux GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-x64 .
-      GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-arm64 .
-      GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
-      GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
-      GOOS=windows GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-windows.exe .
+      GOOS=linux GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-x64 .
+      GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-arm64 .
+      GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
+      GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
       ls -lh {{.BUILD_DIR}}/release
 
   help:
