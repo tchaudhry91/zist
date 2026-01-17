@@ -41,7 +41,7 @@ All aggregated into: ~/.zist/zist.db
 
 ## Components
 
-### 1. CLI Tool (Zig)
+### 1. CLI Tool (Go)
 
 **Binary:** `zist`
 **Configuration:** `~/.config/zist/config.ini`
@@ -268,24 +268,25 @@ Any file syncing tool works - just point it at your history files.
 
 ## Implementation Notes
 
-### Zig Dependencies
+### Go Dependencies
 
 **External libraries needed:**
-- `zig-sqlite` (https://github.com/vrischmann/zig-sqlite) - SQLite bindings
+- `mattn/go-sqlite3` (https://github.com/mattn/go-sqlite3) - SQLite bindings
+- `spf13/cobra` (optional) - CLI argument parsing
+- `spf13/viper` (optional) - Configuration parsing
 
-**Built-in (std library):**
-- `std.json` - JSON parsing (not needed for sync anymore, but kept for future)
-- `std.fs` - File I/O for reading history and config
-- `std.http.Client` - HTTP client for Ollama API
-- `std.ChildProcess` - Execute shell commands (fzf fallback)
-- `std.mem` - String parsing and manipulation
+**Built-in (standard library):**
+- `encoding/json` - JSON parsing (not needed for sync anymore, but kept for future)
+- `os` / `io` - File I/O for reading history and config
+- `net/http` - HTTP client for Ollama API
+- `os/exec` - Execute shell commands (fzf fallback)
+- `strings` / `bufio` - String parsing and manipulation
 
-**No external library (write yourself):**
-- INI parser (~100-150 LOC)
-- ZSH history parser
-- CLI argument parsing (or use `zig-clap` if preferred)
+**Optional parsers (consider standard library first):**
+- INI parser (can write simple one or use library)
+- ZSH history parser (write custom, straightforward)
 
-**Total external dependencies: 1 (just zig-sqlite)**
+**Total external dependencies: 1-2 (sqlite3, cobra optional)**
 
 ### ZSH History Format
 
@@ -311,23 +312,23 @@ Format: `: <timestamp>:<duration>;<command>`
 
 ```zig
 // Pseudocode for collection
-var commands_at_timestamp = HashMap(u64, []Command){};
+commands_at_timestamp := make(map[int64][]Command)
 
 // Read history file and group by timestamp
 for line in history_file {
-    (timestamp, duration, command) = parse(line);
+    timestamp, duration, command := parse(line)
 
-    if (!commands_at_timestamp[timestamp]) {
-        commands_at_timestamp[timestamp] = [];
-    }
-    commands_at_timestamp[timestamp].append({duration, command});
+    commands_at_timestamp[timestamp] = append(commands_at_timestamp[timestamp], Command{
+        duration: duration,
+        command: command,
+    })
 }
 
 // Insert with subsecond precision
-for (timestamp, commands) in commands_at_timestamp {
-    for (i, cmd) in enumerate(commands) {
+for timestamp, commands := range commands_at_timestamp {
+    for i, cmd := range commands {
         // Add milliseconds based on order: .000, .001, .002, etc.
-        precise_timestamp = timestamp + (i * 0.001);
+        precise_timestamp := float64(timestamp) + float64(i) * 0.001
 
         INSERT OR IGNORE INTO commands (source, timestamp, command, duration, ...)
         VALUES (source_path, precise_timestamp, cmd.command, cmd.duration, ...);
@@ -364,8 +365,8 @@ All three commands at the same second get unique timestamps.
 
 **Format:** Simple INI format (no external library needed)
 
-**Parser implementation (Zig):**
-```zig
+**Parser implementation (Go):**
+```go
 // Simple state machine
 // ~100-150 lines of code
 // Parse sections: [section]
@@ -387,38 +388,42 @@ All three commands at the same second get unique timestamps.
 
 ### TUI Implementation
 
-**Decision:** Custom Zig TUI (no external dependencies)
-- Full control over behavior
-- No `fzf` dependency
-- Smaller binary
+**Decision:** Shell out to `fzf` (simple, fast, mature)
+- Proven, battle-tested
+- Users likely already have fzf installed
+- Faster to implement
 
-**Alternative:** Shell out to `fzf` if user prefers
-- Can be config option
+**Alternative:** Custom Go TUI with bubbletea/charmbracelet
+- More polished experience
+- More dependencies
+- Consider for v2
 
 ## Distribution
 
 ### Static Binaries
 
-**Zig builds static binaries natively:**
+**Go builds static binaries:**
 
 ```bash
 # Cross-compile for all platforms from one machine
-zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast
-zig build -Dtarget=x86_64-macos -Doptimize=ReleaseFast
-zig build -Dtarget=aarch64-macos -Doptimize=ReleaseFast
-zig build -Dtarget=x86_64-windows -Doptimize=ReleaseFast
+GOOS=linux GOARCH=amd64 go build -o zist-linux-x64
+GOOS=darwin GOARCH=amd64 go build -o zist-macos-intel
+GOOS=darwin GOARCH=arm64 go build -o zist-macos-arm
+GOOS=windows GOARCH=amd64 go build -o zist-windows.exe
 ```
 
 **GitHub Releases:**
 ```
 zist-v1.0.0/
-  ├── zist-linux-x64      (~500KB)
-  ├── zist-macos-intel    (~500KB)
-  ├── zist-macos-arm      (~500KB)
-  └── zist-windows.exe    (~500KB)
+  ├── zist-linux-x64      (~5-10MB with SQLite)
+  ├── zist-macos-intel    (~5-10MB with SQLite)
+  ├── zist-macos-arm      (~5-10MB with SQLite)
+  └── zist-windows.exe    (~5-10MB with SQLite)
 ```
 
-Users: Download → `chmod +x` → Run
+Users: Download → `chmod +x` / Run directly
+
+**Note:** Go binaries are larger than Zig (~5-10MB vs ~500KB) due to static SQLite linkage, but still very reasonable.
 
 ### Package Managers (Future)
 
@@ -486,8 +491,9 @@ Users: Download → `chmod +x` → Run
 - ✅ RAG approach for conversational search (no pre-workflow detection)
 
 **Implementation:**
-- ✅ CLI in Zig (static binaries, full project in Zig)
+- ✅ CLI in Go (static binaries, fast iteration)
 - ✅ INI format for configuration (simple, no external parser)
+- ✅ Shell out to fzf for search UI (fast to implement)
 - ✅ Local Ollama for LLM features (privacy-preserving)
 
 **Removed from original design:**
@@ -500,7 +506,7 @@ Users: Download → `chmod +x` → Run
 ## Open Questions
 
 ### Technical Decisions
-- TUI: Custom Zig or shell out to fzf? (Start with custom, fallback to fzf optional)
+- TUI: Shell out to fzf (fast, mature)
 - Keybinding: Ctrl+R (override default) or different key?
 
 ### Open Source
@@ -511,5 +517,5 @@ Users: Download → `chmod +x` → Run
 ---
 
 *Document created: 2026-01-04*
-*Last updated: 2026-01-11*
-*Status: Design phase - simplified to local aggregation only*
+*Last updated: 2026-01-17*
+*Status: Design phase - simplified to local aggregation only, migrated to Go*

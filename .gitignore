@@ -1,6 +1,17 @@
-# Zig build artifacts
-zig-out/
-.zig-cache/
+# Go build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+*.out
+coverage.html
+
+# Go workspace
+go.work
 
 # Editor/IDE
 .vscode/
@@ -12,6 +23,9 @@ zig-out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Database backups
+zist-backup-*.db
 
 # zist runtime (will be created by the app)
 # Uncomment if you don't want to track test databases

@@ -1,0 +1,117 @@
+# Taskfile for zist
+
+version: '3'
+
+vars:
+  BINARY_NAME: zist
+  BUILD_DIR: bin
+  DB_PATH: ~/.zist/zist.db
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmd: task --list
+
+  build:
+    desc: Build zist binary
+    cmd: mkdir -p {{.BUILD_DIR}} && go build -tags fts5 -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
+    sources:
+      - "*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  test:
+    desc: Run test suite
+    cmd: go test -v -tags fts5 ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmd: rm -rf {{.BUILD_DIR}}
+
+  run:
+    desc: Run zist (build first, then run)
+    cmd: task build && ./{{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}
+
+  collect:
+    desc: Collect history from files
+    cmd: task build && ./{{.BUILD_DIR}}/{{.BINARY_NAME}} collect {{.CLI_ARGS}}
+
+  search:
+    desc: Search command history
+    cmd: task build && ./{{.BUILD_DIR}}/{{.BINARY_NAME}} search {{.CLI_ARGS}}
+
+  install:
+    desc: Install zist to /usr/local/bin
+    cmd: sudo install -m 755 {{.BUILD_DIR}}/{{.BINARY_NAME}} /usr/local/bin/{{.BINARY_NAME}}
+
+  install-user:
+    desc: Install zist to ~/go/bin
+    cmd: mkdir -p ~/go/bin && install -m 755 {{.BUILD_DIR}}/{{.BINARY_NAME}} ~/go/bin/{{.BINARY_NAME}}
+
+  uninstall:
+    desc: Remove installed zist binary
+    cmd: rm -f /usr/local/bin/{{.BINARY_NAME}} ~/go/bin/{{.BINARY_NAME}}
+
+  fmt:
+    desc: Format code with gofmt
+    cmd: gofmt -w -s .
+
+  fmt-check:
+    desc: Check if code is formatted
+    cmd: test -z $(gofmt -l . | head -c 1) || (echo "Code not formatted. Run 'task fmt'." && exit 1)
+
+  vet:
+    desc: Run go vet
+    cmd: go vet ./...
+
+  check:
+    desc: Run all checks (fmt, vet, test)
+    cmds:
+      - task fmt-check
+      - task vet
+      - task test
+
+  deps:
+    desc: Download dependencies
+    cmd: go mod download
+
+  deps-update:
+    desc: Update all dependencies
+    cmd: go get -u ./... && go mod tidy
+
+  deps-verify:
+    desc: Verify dependencies
+    cmd: go mod verify
+
+  ci:
+    desc: Run CI tasks (check)
+    cmd: task check
+
+  db-shell:
+    desc: Open SQLite shell with zist database
+    cmd: sqlite3 {{.DB_PATH}}
+
+  db-backup:
+    desc: Backup database to current directory
+    cmd: cp {{.DB_PATH}} zist-backup-$(date +%Y%m%d-%H%M%S).db
+
+  db-reset:
+    desc: Delete database
+    cmd: rm -f {{.DB_PATH}} && echo "Database deleted. Run 'task collect' to rebuild."
+
+  release:
+    desc: Build release binaries for multiple platforms
+    cmd: |
+      mkdir -p {{.BUILD_DIR}}/release
+      GOOS=linux GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-x64 .
+      GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-arm64 .
+      GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
+      GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
+      GOOS=windows GOARCH=amd64 go build -tags fts5 -ldflags="-s -w" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-windows.exe .
+      ls -lh {{.BUILD_DIR}}/release
+
+  help:
+    desc: Show help message
+    cmd: cat HELP.txt

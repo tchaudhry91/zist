@@ -1,0 +1,28 @@
+zist - Local ZSH history aggregation tool
+
+Quick start:
+  task build                          # Build the binary
+  task test                           # Run tests
+  task collect -- ~/.zsh_history      # Collect history
+  task collect -- ~/.zsh_history ~/.claude/claude_zsh_history  # Collect multiple files
+  task search -- docker                # Search commands
+
+Development:
+  task fmt                            # Format code
+  task check                          # Run all checks
+  task deps-update                    # Update dependencies
+
+Database:
+  task db-shell                       # Open SQLite shell
+  task db-backup                      # Backup database
+  task db-reset                       # Delete and reset database
+
+Installation:
+  task install-user                   # Install to ~/go/bin
+  task install                        # Install to /usr/local/bin (requires sudo)
+  task uninstall                      # Remove installed binary
+
+Other:
+  task clean                          # Clean build artifacts
+  task release                        # Build release binaries
+  task --list                         # List all tasks
