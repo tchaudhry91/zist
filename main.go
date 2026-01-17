@@ -320,9 +320,9 @@ _zist_search() {
 zle -N _zist_search
 bindkey '^X' _zist_search
 
-# Collect history after each command
+# Collect history after each command (subshell suppresses job notifications)
 _zist_precmd() {
-  zist collect %s >/dev/null 2>&1 &
+  (zist collect %s >/dev/null 2>&1 &)
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _zist_precmd
