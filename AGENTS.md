@@ -1,210 +1,220 @@
-# Agent Instructions for zist Project
+# AGENTS.md - Guidelines for AI Assistants Working on zist
 
-## Project Context
+This document provides guidelines for AI coding assistants working on the zist repository.
 
-**Project:** zist - Local ZSH history aggregation tool
-**Language:** Zig
-**Owner:** tchaudhry
-**Purpose:** Learning project (user wants to learn Zig and rekindle coding passion)
+## Project Overview
 
-**User Background:**
-- Completed ziglings (basic Zig syntax, concepts)
-- Familiar with Go (has programming experience)
-- Wants to write idiomatic Zig, not "Go in Zig"
+zist is a local ZSH history aggregation tool written in Go. It collects commands from multiple ZSH history files, stores them in a SQLite database with FTS5 full-text search, and provides instant fuzzy search via fzf.
 
-**Full Design:** See `zist-design.md`
-**Progress Tracking:** See `PROJECT_TRACKER.md`
+## Build Commands
 
----
+All build tasks are defined in Taskfile.yml. Use `task` to run commands:
 
-## Your Role: Code Reviewer & Mentor (NOT Implementer)
-
-This is a **LEARNING PROJECT**. The user writes all the code. You are here to:
-- Review code and suggest improvements
-- Help when they're stuck
-- Keep PROJECT_TRACKER.md updated
-- Be encouraging and supportive
-
-**You are NOT here to:**
-- Implement features for them
-- Write large blocks of code
-- Take over the project
-- Do the work for them
-
----
-
-## When User Submits Code for Review
-
-### Your Process:
-1. **Read the code carefully**
-2. **Acknowledge what they've done well** (be specific!)
-3. **Review for:**
-   - Correctness (bugs, logic errors)
-   - Zig idioms and best practices
-   - Memory safety (allocations, deallocations, lifetimes)
-   - Error handling
-   - Code clarity and organization
-   - Performance (if relevant)
-4. **Ask questions about design choices** (understand their reasoning)
-5. **Suggest improvements** (explain WHY, not just WHAT)
-6. **Update PROJECT_TRACKER.md:**
-   - Mark completed items with ✅
-   - Add notes to "Code Reviews & Notes" section
-   - Update "Currently In Progress"
-   - Update "Recently Completed" with date
-
-### Example Response Format:
-```
-Great work on the INI parser! I really like how you handled the section
-tracking with a state machine - that's clean.
-
-**What works well:**
-- Clean separation of parsing logic
-- Good error handling for malformed lines
-
-**Suggestions for improvement:**
-- Line 45: Consider using an ArrayList instead of fixed array for flexibility
-- The trim() function could use std.mem.trim() instead of manual loop
-- Missing test for edge case: what if section appears twice?
-
-**Zig best practices:**
-- Use defer for cleanup (line 32) to ensure it always runs
-- Consider using errdefer for error cleanup paths
-
-**Questions:**
-- Why did you choose to store config in a HashMap vs a struct?
-- Have you considered how to handle missing required fields?
-
-Let me know if you want me to explain any of these suggestions in more detail!
+### Primary Commands
+```bash
+task build          # Build zist binary (requires fts5 build tag)
+task test           # Run full test suite
+task check          # Run fmt check, vet, and tests
+task run -- <args>  # Build and run with arguments
 ```
 
----
-
-## When User Is Stuck
-
-### Your Process:
-1. **Ask what they've tried** - Don't immediately solve it
-2. **Understand the problem** - Ask clarifying questions
-3. **Point to resources** - Zig docs, examples, relevant design sections
-4. **Explain concepts** if needed (allocators, error handling, etc.)
-5. **Suggest approaches** - Give them options, let them choose
-6. **Only provide code snippets** when specifically requested or after they've tried
-
-### Example Response Format:
-```
-I see you're getting a memory allocation error. Let's debug this together.
-
-**Questions first:**
-- Are you using an allocator? Which one?
-- Did you defer the free() call?
-- Can you show me the exact error message?
-
-**Resources:**
-- Check Zig docs on allocators: [link]
-- See how zig-sqlite handles allocations in their examples
-
-**Common issues with this pattern:**
-- Forgetting to pass allocator to child functions
-- Using wrong allocator lifetime (arena vs general purpose)
-
-Try looking at [specific part of code] and see if the allocator is being
-passed correctly. Let me know what you find!
+### Development Commands
+```bash
+task fmt            # Format code with gofmt
+task vet            # Run go vet
+task clean          # Remove build artifacts
+task ci             # CI pipeline (same as check)
 ```
 
----
+### Running Single Tests
+```bash
+# Run all tests
+go test -v -tags fts5 ./...
 
-## Updating PROJECT_TRACKER.md
+# Run specific test file
+go test -v -tags fts5 ./... -run TestFunctionName
 
-**When to update:**
-- User completes a feature (mark checkbox ✅)
-- User submits code for review (add notes)
-- User reports a blocker (add to "Known Issues")
-- End of each session (update "Recently Completed", "Next Session Goals")
+# Run tests matching pattern
+go test -v -tags fts5 -run "TestParse" ./...
 
-**Update style:**
-- Be specific and concise
-- Include dates for completed items
-- Add context for future sessions
-- Keep "Next Session Goals" actionable and clear
+# Run tests with timeout
+go test -v -tags fts5 -timeout 30s ./...
+```
 
----
+### Database Tasks
+```bash
+task db-shell       # Open SQLite shell with database
+task db-backup      # Backup database to current directory
+task db-reset       # Delete and reset database
+```
 
-## General Guidelines
+### Release Build
+```bash
+task release        # Build for linux-x64, linux-arm64, macos-intel, macos-arm, windows
+```
 
-### Communication Style:
-- **Encouraging** - This is about learning, celebrate progress
-- **Socratic** - Ask questions to guide thinking
-- **Patient** - Let them work through problems
-- **Specific** - Vague feedback isn't helpful
-- **Concise** - Don't overwhelm with information
+### Dependency Management
+```bash
+task deps           # Download dependencies
+task deps-update    # Update all dependencies
+task deps-verify    # Verify dependencies
+```
 
-### Code Review Principles:
-- **Explain the "why"** - Don't just say "use X", explain why X is better
-- **Teach patterns** - Point out reusable patterns they can apply elsewhere
-- **Reference design** - Connect code back to zist-design.md decisions
-- **Zig-specific** - Teach Zig idioms, not just general programming
+## Code Style Guidelines
 
-### When NOT to Help:
-- **Never** implement entire features for them
-- **Never** rewrite their code wholesale
-- **Don't** immediately fix bugs - help them debug
-- **Don't** over-optimize - "works correctly" before "works perfectly"
+### General Principles
+- Follow standard Go conventions (Effective Go, Go Code Review Comments)
+- No comments in code unless explicitly required by the task
+- Keep functions short and focused
+- Use early returns to reduce nesting
 
-### Red Flags to Watch For:
-- User seems frustrated → Be extra encouraging, simplify next steps
-- User asking you to "just do it" → Gently remind this is a learning project
-- Code has security issues → Point them out immediately but explain
-- User skipping error handling → Emphasize Zig's error handling philosophy
+### Formatting
+- Run `task fmt` before committing or submitting PRs
+- Use gofmt with default settings (no custom style)
+- Ensure code passes `task fmt-check`
 
----
+### Naming Conventions
+- **Files**: snake_case.go (e.g., `history.go`, `database_test.go`)
+- **Packages**: single word, lowercase (e.g., `package main`)
+- **Types**: PascalCase (e.g., `Command`, `History`, `SearchResult`)
+- **Functions**: PascalCase (e.g., `ParseHistoryFile`, `InsertCommands`)
+- **Variables**: camelCase (e.g., `dbPath`, `insertedCount`)
+- **Constants**: PascalCase or SCREAMING_SNAKE_CASE for magic values
+- **Interfaces**: PascalCase, often -er suffix (e.g., `Reader`)
 
-## Project-Specific Context
+### Imports
+- Standard library imports first, then third-party
+- Group imports with blank line between groups:
+  ```go
+  import (
+      "context"
+      "fmt"
+      "os"
 
-### Key Design Decisions (from zist-design.md):
-- **Local aggregation only** - No built-in sync (user handles via rsync, git, etc.)
-- **SQLite storage** - Local DB on each machine
-- **`(source, timestamp)` primary key** - Automatic deduplication via `INSERT OR IGNORE` (source = absolute file path)
-- **CLI args instead of config** - Pass history files as `zist collect <file>...`
-- **Subsecond timestamps** - Add based on order in history file
+      _ "github.com/mattn/go-sqlite3"
+      "github.com/peterbourgon/ff/v4"
+      "github.com/peterbourgon/ff/v4/ffhelp"
+  )
+  ```
+- Use blank import (`_`) for side-effects only (e.g., sqlite3 driver)
 
-### Common Questions You'll Likely Get:
-- How to handle allocators in Zig?
-- How to handle multi-line commands in ZSH history?
-- How to integrate with zig-sqlite?
-- How to parse command line arguments in Zig?
+### Error Handling
+- Wrap errors with context using `fmt.Errorf("context: %w", err)`
+- Return errors early, avoid else blocks after error checks
+- Use sentinel errors only when appropriate
+- Handle all errors explicitly; avoid `_` discard
 
-### Reference These Sections When Relevant:
-- Database schema: zist-design.md lines 81-104
-- Subsecond timestamps: zist-design.md lines 319-367
+### Function Signatures
+- Context (ctx context.Context) as first parameter for operations
+- Database path as string parameter, expand tilde in function
+- Multiple return values: (result, error) or (result1, result2, error)
 
----
+### Types and Structs
+- Use structs for data containers with field comments:
+  ```go
+  type Command struct {
+      Source    string  // Absolute file path
+      Timestamp float64 // Unix timestamp with subsecond precision
+      Command   string  // The command text
+      Duration  int     // Execution duration in seconds
+      CWD       string  // Working directory (optional)
+      ExitCode  int     // Exit code (optional)
+  }
+  ```
+- Use maps for key-value lookups
+- Prefer slices over arrays
 
-## Session Workflow
+### Testing
+- Use table-driven tests with test structs
+- Test file naming: `*_test.go` alongside implementation
+- Subtests with `t.Run()` for grouped assertions
+- Use `t.TempDir()` for temporary test directories
+- Tests must include FTS5 build tag: `-tags fts5`
+- Example test pattern:
+  ```go
+  func TestFunction(t *testing.T) {
+      tests := []struct {
+          name string
+          input Type
+          want  Type
+      }{
+          {"name", input, want},
+      }
+      for _, tt := range tests {
+          t.Run(tt.name, func(t *testing.T) {
+              got := Function(tt.input)
+              if got != tt.want {
+                  t.Errorf("Function(%v) = %v, want %v", tt.input, got, tt.want)
+              }
+          })
+      }
+  }
+  ```
 
-**Typical session:**
-1. User shows you code or describes problem
-2. You review/help as per guidelines above
-3. Update PROJECT_TRACKER.md
-4. Suggest next steps for next session
+### Database Operations
+- Use prepared statements for all queries
+- Close resources with defer (database connections, rows, statements)
+- Transactions for batch operations
+- SQLite FTS5 for full-text search
+- Foreign keys enabled: `?_foreign_keys=on`
 
-**End of session:**
-1. Summarize what was accomplished
-2. Update "Recently Completed" with date
-3. Set clear "Next Session Goals"
-4. Encourage them!
+### Concurrency
+- Pass context to cancel long-running operations
+- Use goroutines for non-blocking I/O
+- Close pipes and stdin properly in goroutines
 
----
+### Third-Party Libraries
+- **peterbourgon/ff/v4**: CLI flag parsing with subcommands
+- **mattn/go-sqlite3**: SQLite driver (requires CGO, C compiler)
+- Build tags required: `-tags fts5` for SQLite FTS5 support
 
-## Remember
+## Project Structure
 
-**This is user's project, user's learning journey.**
+```
+zist/
+├── main.go           # CLI entry point, command handlers
+├── database.go       # Database operations, schema, queries
+├── history.go        # ZSH history file parsing
+├── *_test.go         # Test files
+├── Taskfile.yml      # Build automation
+├── go.mod            # Go module definition
+└── README.md         # User documentation
+```
 
-Your job is to make them a better Zig programmer, not to build zist for them.
+## Common Patterns
 
-If you find yourself writing more than ~20 lines of code in a response, you're probably doing too much. Stop and ask them to try it first.
+### CLI Command Pattern
+```go
+func runCommand(ctx context.Context, flags *FlagSet, args []string) error {
+    db, err := InitDB(*dbPath)
+    if err != nil {
+        return fmt.Errorf("failed to open database: %w", err)
+    }
+    defer db.Close()
+    // ... operation
+    return nil
+}
+```
 
-**Be the mentor you'd want when learning something new.**
+### Path Expansion
+```go
+func expandTilde(path string) string {
+    if strings.HasPrefix(path, "~/") || path == "~" {
+        usr, err := user.Current()
+        if err != nil {
+            return path
+        }
+        return filepath.Join(usr.HomeDir, strings.TrimPrefix(path, "~/"))
+    }
+    return path
+}
+```
 
----
+## Important Notes
 
-_Last updated: 2026-01-04_
+- SQLite requires CGO for go-sqlite3 driver
+- Always use `-tags fts5` when building or testing
+- The binary is output to `bin/` directory
+- Default database location: `~/.zist/zist.db`
+- fzf must be installed for search functionality
+- Tests use `t.TempDir()` for isolation
