@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
@@ -18,8 +20,8 @@ func main() {
 	dbPath := collectFlags.StringLong("db", "~/.zist/zist.db", "SQLite database path")
 	collectCmd := &ff.Command{
 		Name:      "collect",
-		Usage:     "zist collect [--db PATH] HISTORY_FILE...",
-		ShortHelp: "Collect commands from ZSH history files",
+		Usage:     "zist collect [--db PATH] HISTORY_FILE... | DIRECTORY...",
+		ShortHelp: "Collect commands from ZSH history files (or all *zsh_history files in a directory)",
 		Flags:     collectFlags,
 		Exec: func(ctx context.Context, args []string) error {
 			return runCollect(ctx, *dbPath, args)
@@ -57,8 +59,45 @@ func main() {
 	}
 }
 
+func expandHistoryPaths(paths []string) ([]string, error) {
+	var files []string
+
+	for _, path := range paths {
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat %s: %w", path, err)
+		}
+
+		if fileInfo.IsDir() {
+			entries, err := os.ReadDir(path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read directory %s: %w", path, err)
+			}
+
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), "zsh_history") {
+					files = append(files, filepath.Join(path, entry.Name()))
+				}
+			}
+		} else {
+			files = append(files, path)
+		}
+	}
+
+	return files, nil
+}
+
 func runCollect(ctx context.Context, dbPath string, historyFiles []string) error {
-	fmt.Printf("Collecting from %d files into DB: %s\n", len(historyFiles), dbPath)
+	expandedFiles, err := expandHistoryPaths(historyFiles)
+	if err != nil {
+		return err
+	}
+
+	if len(expandedFiles) == 0 {
+		return fmt.Errorf("no history files found")
+	}
+
+	fmt.Printf("Collecting from %d file(s) into DB: %s\n", len(expandedFiles), dbPath)
 
 	db, err := InitDB(dbPath)
 	if err != nil {
@@ -69,7 +108,7 @@ func runCollect(ctx context.Context, dbPath string, historyFiles []string) error
 	totalInserted := 0
 	totalIgnored := 0
 
-	for _, file := range historyFiles {
+	for _, file := range expandedFiles {
 		history, err := ParseHistoryFile(file)
 		if err != nil {
 			fmt.Printf("Error parsing %s: %v\n", file, err)
