@@ -5,6 +5,7 @@ Quick start:
   task test                           # Run tests
   task collect -- ~/.zsh_history      # Collect history
   task collect -- ~/.zsh_history ~/.claude/claude_zsh_history  # Collect multiple files
+  task collect -- ~/synced_hists/     # Collect all *zsh_history files from directory
   task search -- docker                # Search commands
 
 Development:
