@@ -13,6 +13,9 @@ coverage.html
 # Go workspace
 go.work
 
+# Task runner cache
+.task/
+
 # Editor/IDE
 .vscode/
 .idea/
