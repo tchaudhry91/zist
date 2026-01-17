@@ -41,10 +41,11 @@ See `zist-design.md` for full design specification.
   - [x] INSERT OR IGNORE for automatic deduplication
   - [x] ~ path expansion for database path
   - [x] All unit tests passing (4 test cases)
-- [ ] `zist search` command
-  - [ ] SQLite FTS5 queries
-  - [ ] Shell out to fzf for UI
-  - [ ] Return selected command to shell
+- [x] `zist search` command
+  - [x] SQLite FTS5 queries (with prefix wildcards and escaping)
+  - [x] Shell out to fzf for UI
+  - [x] Return selected command to shell
+  - [x] Result limit (100 rows)
 
 ---
 
@@ -70,7 +71,17 @@ See `zist-design.md` for full design specification.
 
 ## Currently In Progress
 
-**Search Implementation:** Next step is to implement `zist search` with fzf integration.
+**Search Implementation:** FTS5 search working with proper wildcard escaping. ZSH integration complete with precmd hook.
+
+## Code Reviews & Notes (2026-01-17)
+
+**Fixed in this session:**
+1. **ZSH Precmd Hook**: Added `precmd()` function to integration that runs `zist collect &` after every command
+2. **Idempotent Install**: Simplified check to look for "# zist integration" marker
+3. **Uninstall Fix**: Updated to properly remove both Ctrl+X binding and precmd hook
+4. **FTS5 Query Injection**: Added `buildFTSQuery()` with escaping for special characters
+5. **Query Wildcards**: Changed from `*git*` (invalid) to `git*` (valid prefix wildcard)
+6. **Result Limits**: Added `LIMIT 100` to prevent large result sets
 
 ## Recently Completed
 
@@ -140,18 +151,18 @@ _Add questions here as they come up during implementation_
 
 ## Next Session Goals
 
-**Search Implementation:**
-1. Implement `zist search` with FTS5 queries
-2. Shell out to fzf for interactive UI
-3. Format results for fzf (timestamp, command, source)
-4. Handle query argument (pre-filter vs show all)
-5. Test search with actual database
-6. Add install/uninstall for ZSH integration (precmd hook, Ctrl+R binding)
+**Phase 1 Complete (MVP Ready):**
+- ✅ ZSH history parser
+- ✅ Database layer with FTS5 search
+- ✅ `zist collect` command
+- ✅ `zist search` command
+- ✅ ZSH integration (Ctrl+X + precmd hook)
 
-**After search:**
-7. Cross-platform builds
-8. Documentation and README
-9. CI/CD for releases
+**Next Steps:**
+1. Cross-platform builds (Linux, macOS, Windows)
+2. Documentation and README polish
+3. CI/CD for releases
+4. Phase 2: `zist ask` (RAG/LLM)
 
 ---
 

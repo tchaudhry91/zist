@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -249,6 +248,22 @@ _zist_search() {
 }
 zle -N _zist_search
 bindkey '^X' _zist_search
+
+# zist precmd hook - collect history after each command
+if [[ -z "$(declare -f precmd)" ]]; then
+  precmd() {
+    zist collect &
+  }
+else
+  # Append to existing precmd function
+  precmd() {
+    zist collect &
+    ret=$?
+    Oldprecmd
+    return $ret
+  }
+  Oldprecmd=precmd
+fi
 `
 
 func runInstall(ctx context.Context) error {
@@ -259,40 +274,19 @@ func runInstall(ctx context.Context) error {
 
 	zshrcPath := filepath.Join(usr.HomeDir, ".zshrc")
 
-	zshrc, err := os.OpenFile(zshrcPath, os.O_RDWR|os.O_CREATE, 0644)
+	content, err := os.ReadFile(zshrcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open ~/.zshrc: %w", err)
-	}
-	defer zshrc.Close()
-
-	scanner := bufio.NewScanner(zshrc)
-	startLine := -1
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, "zist integration - Ctrl+X") {
-			startLine = 1
-			break
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("failed to read ~/.zshrc: %w", err)
 	}
 
-	if startLine != -1 {
+	if strings.Contains(string(content), "# zist integration") {
 		fmt.Println("✓ ZSH integration already installed")
 		fmt.Printf("  Run: source %s\n", zshrcPath)
 		fmt.Println("  Then press Ctrl+X to search history")
 		return nil
 	}
 
-	zshrcContent, err := os.ReadFile(zshrcPath)
-	if err != nil {
-		return fmt.Errorf("failed to read ~/.zshrc: %w", err)
-	}
-
-	newContent := string(zshrcContent)
+	newContent := string(content)
 	if !strings.HasSuffix(strings.TrimSpace(newContent), "\n") {
 		newContent += "\n"
 	}
@@ -321,35 +315,50 @@ func runUninstall(ctx context.Context) error {
 		return fmt.Errorf("failed to read ~/.zshrc: %w", err)
 	}
 
-	lines := strings.Split(string(content), "\n")
-	newLines := []string{}
-	inZistBlock := false
-	removed := false
-
-	for _, line := range lines {
-		if strings.Contains(line, "zist integration - Ctrl+X") {
-			inZistBlock = true
-			removed = true
-			continue
-		}
-
-		if inZistBlock && strings.TrimSpace(line) == "bindkey '^X' _zist_search" {
-			inZistBlock = false
-			continue
-		}
-
-		if !inZistBlock {
-			newLines = append(newLines, line)
-		}
-	}
-
-	if inZistBlock {
-		newLines = []string{}
-	}
-
-	if !removed {
+	if !strings.Contains(string(content), "# zist integration") {
 		fmt.Println("✓ ZSH integration not found")
 		return nil
+	}
+
+	lines := strings.Split(string(content), "\n")
+	newLines := []string{}
+	skipUntilMatch := false
+
+	for _, line := range lines {
+		if strings.Contains(line, "# zist integration") {
+			skipUntilMatch = true
+			continue
+		}
+
+		if skipUntilMatch {
+			if strings.HasPrefix(line, "bindkey '^X'") ||
+				strings.HasPrefix(line, "zle -N _zist_search") ||
+				strings.HasPrefix(line, "_zist_search() {") ||
+				strings.HasPrefix(line, "  local buf=") ||
+				strings.HasPrefix(line, "  local selected=") ||
+				strings.HasPrefix(line, "  if [[ -n") ||
+				strings.HasPrefix(line, "  fi") ||
+				strings.HasPrefix(line, "  zle reset-prompt") ||
+				strings.HasPrefix(line, "}") ||
+				strings.HasPrefix(line, "if [[ -z \"$(declare -f") ||
+				strings.HasPrefix(line, "  precmd() {") ||
+				strings.HasPrefix(line, "    zist collect") ||
+				strings.HasPrefix(line, "    ret=$") ||
+				strings.HasPrefix(line, "    Oldprecmd=") ||
+				strings.HasPrefix(line, "    return $ret") ||
+				strings.HasPrefix(line, "  }") ||
+				strings.HasPrefix(line, "else") ||
+				strings.HasPrefix(line, "  # Append to existing") ||
+				strings.HasPrefix(line, "  }") {
+				continue
+			}
+			if strings.TrimSpace(line) == "}" {
+				skipUntilMatch = false
+				continue
+			}
+		}
+
+		newLines = append(newLines, line)
 	}
 
 	newContent := strings.Join(newLines, "\n")

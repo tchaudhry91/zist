@@ -209,13 +209,16 @@ func SearchCommands(db *sql.DB, query string) ([]SearchResult, error) {
 		rows, err = db.Query(`
 			SELECT command, source FROM commands
 			ORDER BY timestamp DESC
+			LIMIT 100
 		`)
 	} else {
+		ftsQuery := buildFTSQuery(query)
 		rows, err = db.Query(`
 			SELECT command, source FROM commands
 			WHERE rowid IN (SELECT rowid FROM commands_fts WHERE commands_fts MATCH ?)
 			ORDER BY timestamp DESC
-		`, query)
+			LIMIT 100
+		`, ftsQuery)
 	}
 
 	if err != nil {
@@ -236,4 +239,27 @@ func SearchCommands(db *sql.DB, query string) ([]SearchResult, error) {
 	}
 
 	return results, nil
+}
+
+func buildFTSQuery(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+
+	parts := strings.Fields(query)
+	for i, part := range parts {
+		parts[i] = escapeFTS(part) + "*"
+	}
+	return strings.Join(parts, " ")
+}
+
+func escapeFTS(s string) string {
+	s = strings.ReplaceAll(s, "\"", "\"\"")
+	s = strings.ReplaceAll(s, "'", "''")
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "(", "")
+	s = strings.ReplaceAll(s, ")", "")
+	s = strings.ReplaceAll(s, ":", "")
+	return s
 }
