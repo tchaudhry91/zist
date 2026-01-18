@@ -266,10 +266,13 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 	}
 
 	// fzf with preview pane showing source and timestamp
+	// Use --read0 to handle multiline commands (null-byte separated records)
 	cmd := exec.CommandContext(ctx, "fzf",
+		"--read0",
+		"--print0",
 		"--delimiter=\t",
 		"--with-nth=1",           // Only display the command (field 1)
-		"--preview", "echo -e \"Source: {2}\\nTime:   {3}\\n\\nCommand:\\n{1}\"",
+		"--preview", `sh -c 'printf "Source: %s\nTime:   %s\n\nCommand:\n%s\n" "$2" "$3" "$1"' _ {1} {2} {3}`,
 		"--preview-window=right:40%:wrap",
 	)
 	cmd.Stderr = os.Stderr
@@ -281,9 +284,9 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 
 	go func() {
 		for _, result := range commands {
-			// Tab-separated: command \t source \t timestamp
+			// Tab-separated: command \t source \t timestamp, null-byte terminated
 			formattedTime := FormatTimestamp(result.Timestamp)
-			fmt.Fprintf(stdin, "%s\t%s\t%s\n", result.Command, result.Source, formattedTime)
+			fmt.Fprintf(stdin, "%s\t%s\t%s\x00", result.Command, result.Source, formattedTime)
 		}
 		stdin.Close()
 	}()
@@ -299,7 +302,9 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 		return fmt.Errorf("fzf failed: %w", err)
 	}
 
-	selected := strings.TrimSpace(string(stdout))
+	// Trim null byte and whitespace from output (--print0 adds trailing null)
+	selected := strings.TrimRight(string(stdout), "\x00")
+	selected = strings.TrimSpace(selected)
 	if selected == "" {
 		return nil
 	}
