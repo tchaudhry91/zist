@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -74,6 +75,17 @@ func CreateSchema(db *sql.DB) error {
 			INSERT INTO commands_fts(commands_fts, rowid, command) VALUES ('delete', old.rowid, old.command);
 			INSERT INTO commands_fts(rowid, command) VALUES (new.rowid, new.command);
 		END;`,
+		// Wizard cache table for natural language → command mappings
+		`CREATE TABLE IF NOT EXISTS wizard_cache (
+			query_normalized TEXT PRIMARY KEY,
+			query_original TEXT NOT NULL,
+			command TEXT NOT NULL,
+			run_count INTEGER DEFAULT 1,
+			last_used REAL NOT NULL,
+			created_at REAL NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_wizard_last_used ON wizard_cache(last_used DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_wizard_run_count ON wizard_cache(run_count DESC);`,
 	}
 
 	for _, query := range queries {
@@ -281,4 +293,291 @@ func escapeFTS(s string) string {
 	s = strings.ReplaceAll(s, ")", "")
 	s = strings.ReplaceAll(s, ":", "")
 	return s
+}
+
+// FrequentCommand represents a command and its usage count
+type FrequentCommand struct {
+	Command string
+	Count   int
+}
+
+// SearchByPrefix returns commands starting with the given prefix (for history fallback)
+func SearchByPrefix(db *sql.DB, prefix string, limit int) ([]SearchResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	query := `SELECT command, source, timestamp FROM commands
+		WHERE command LIKE ? || '%'
+		ORDER BY timestamp DESC
+		LIMIT ?`
+
+	rows, err := db.Query(query, prefix, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search by prefix: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.Command, &result.Source, &result.Timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, rows.Err()
+}
+
+// GetFrequentCommands returns the most frequently used commands matching a pattern
+func GetFrequentCommands(db *sql.DB, pattern string, limit int) ([]FrequentCommand, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var query string
+	var args []interface{}
+
+	if pattern != "" {
+		query = `SELECT command, COUNT(*) as count FROM commands
+			WHERE command LIKE '%' || ? || '%'
+			GROUP BY command
+			ORDER BY count DESC
+			LIMIT ?`
+		args = []interface{}{pattern, limit}
+	} else {
+		query = `SELECT command, COUNT(*) as count FROM commands
+			GROUP BY command
+			ORDER BY count DESC
+			LIMIT ?`
+		args = []interface{}{limit}
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get frequent commands: %w", err)
+	}
+	defer rows.Close()
+
+	var results []FrequentCommand
+	for rows.Next() {
+		var result FrequentCommand
+		if err := rows.Scan(&result.Command, &result.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, rows.Err()
+}
+
+// GetRecentCommands returns the last N commands globally
+func GetRecentCommands(db *sql.DB, limit int) ([]SearchResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `SELECT command, source, timestamp FROM commands
+		ORDER BY timestamp DESC
+		LIMIT ?`
+
+	rows, err := db.Query(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent commands: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.Command, &result.Source, &result.Timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, rows.Err()
+}
+
+// WizardCacheEntry represents a cached query→command mapping
+type WizardCacheEntry struct {
+	QueryNormalized string
+	QueryOriginal   string
+	Command         string
+	RunCount        int
+	LastUsed        float64
+	CreatedAt       float64
+}
+
+// NormalizeQuery normalizes a query for cache lookup (lowercase, trim whitespace)
+func NormalizeQuery(query string) string {
+	return strings.ToLower(strings.TrimSpace(query))
+}
+
+// GetWizardCache looks up a cached command for the given query
+func GetWizardCache(db *sql.DB, query string) (*WizardCacheEntry, error) {
+	normalized := NormalizeQuery(query)
+
+	row := db.QueryRow(`SELECT query_normalized, query_original, command, run_count, last_used, created_at
+		FROM wizard_cache WHERE query_normalized = ?`, normalized)
+
+	var entry WizardCacheEntry
+	err := row.Scan(&entry.QueryNormalized, &entry.QueryOriginal, &entry.Command,
+		&entry.RunCount, &entry.LastUsed, &entry.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wizard cache: %w", err)
+	}
+
+	return &entry, nil
+}
+
+// SetWizardCache stores or updates a query→command mapping
+func SetWizardCache(db *sql.DB, query, command string) error {
+	normalized := NormalizeQuery(query)
+	now := float64(time.Now().Unix())
+
+	_, err := db.Exec(`INSERT INTO wizard_cache (query_normalized, query_original, command, run_count, last_used, created_at)
+		VALUES (?, ?, ?, 1, ?, ?)
+		ON CONFLICT(query_normalized) DO UPDATE SET
+			command = excluded.command,
+			run_count = run_count + 1,
+			last_used = excluded.last_used`,
+		normalized, query, command, now, now)
+
+	if err != nil {
+		return fmt.Errorf("failed to set wizard cache: %w", err)
+	}
+
+	return nil
+}
+
+// ListWizardCache returns all cached mappings, ordered by most recently used
+func ListWizardCache(db *sql.DB, limit int) ([]WizardCacheEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := db.Query(`SELECT query_normalized, query_original, command, run_count, last_used, created_at
+		FROM wizard_cache ORDER BY last_used DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list wizard cache: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []WizardCacheEntry
+	for rows.Next() {
+		var entry WizardCacheEntry
+		if err := rows.Scan(&entry.QueryNormalized, &entry.QueryOriginal, &entry.Command,
+			&entry.RunCount, &entry.LastUsed, &entry.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan wizard cache entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, rows.Err()
+}
+
+// ClearWizardCache removes all cached mappings
+func ClearWizardCache(db *sql.DB) error {
+	_, err := db.Exec(`DELETE FROM wizard_cache`)
+	if err != nil {
+		return fmt.Errorf("failed to clear wizard cache: %w", err)
+	}
+	return nil
+}
+
+// DeleteWizardCacheEntry removes a specific cached mapping
+func DeleteWizardCacheEntry(db *sql.DB, query string) error {
+	normalized := NormalizeQuery(query)
+	_, err := db.Exec(`DELETE FROM wizard_cache WHERE query_normalized = ?`, normalized)
+	if err != nil {
+		return fmt.Errorf("failed to delete wizard cache entry: %w", err)
+	}
+	return nil
+}
+
+// SearchHistoryByKeywords searches history for commands containing the given keywords
+// Uses AND for multiple keywords to get more relevant results
+func SearchHistoryByKeywords(db *sql.DB, keywords []string, limit int) ([]SearchResult, error) {
+	if len(keywords) == 0 || limit <= 0 {
+		return nil, nil
+	}
+
+	// Filter to meaningful keywords (longer than 2 chars)
+	var filtered []string
+	for _, kw := range keywords {
+		if kw = strings.TrimSpace(kw); len(kw) > 2 {
+			filtered = append(filtered, kw)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	// Build LIKE conditions - use AND for better relevance
+	var conditions []string
+	var args []interface{}
+	for _, kw := range filtered {
+		conditions = append(conditions, "command LIKE ?")
+		args = append(args, "%"+kw+"%")
+	}
+
+	// Try AND first (more specific), fall back to OR if no results
+	query := fmt.Sprintf(`SELECT command, source, timestamp FROM commands
+		WHERE %s
+		GROUP BY command
+		ORDER BY COUNT(*) DESC, timestamp DESC
+		LIMIT ?`, strings.Join(conditions, " AND "))
+	args = append(args, limit)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search history by keywords: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.Command, &result.Source, &result.Timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	// If AND returned no results and we have multiple keywords, try OR
+	if len(results) == 0 && len(filtered) > 1 {
+		args = args[:0]
+		for _, kw := range filtered {
+			args = append(args, "%"+kw+"%")
+		}
+		args = append(args, limit)
+
+		query = fmt.Sprintf(`SELECT command, source, timestamp FROM commands
+			WHERE %s
+			GROUP BY command
+			ORDER BY COUNT(*) DESC, timestamp DESC
+			LIMIT ?`, strings.Join(conditions, " OR "))
+
+		rows2, err := db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to search history by keywords: %w", err)
+		}
+		defer rows2.Close()
+
+		for rows2.Next() {
+			var result SearchResult
+			if err := rows2.Scan(&result.Command, &result.Source, &result.Timestamp); err != nil {
+				return nil, fmt.Errorf("failed to scan result: %w", err)
+			}
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
 }

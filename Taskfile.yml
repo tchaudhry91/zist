@@ -6,7 +6,7 @@ vars:
   BINARY_NAME: zist
   BUILD_DIR: bin
   DB_PATH: ~/.zist/zist.db
-  VERSION: 0.1.1
+  VERSION: 0.2.0
 
 tasks:
   default:

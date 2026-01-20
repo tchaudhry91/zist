@@ -73,6 +73,29 @@ func main() {
 		},
 	}
 
+	wizardFlags := ff.NewFlagSet("wizard").SetParent(rootFlags)
+	wizardQuery := wizardFlags.StringLong("query", "q", "")
+	wizardCache := wizardFlags.StringLong("cache", "", "Cache a query→command mapping (format: query)")
+	wizardCacheCmd := wizardFlags.StringLong("cache-command", "", "Command to cache (use with --cache)")
+	wizardListCache := wizardFlags.BoolLong("list-cache", "List cached query→command mappings")
+	wizardClearCache := wizardFlags.BoolLong("clear-cache", "Clear all cached mappings")
+	wizardPWD := wizardFlags.StringLong("pwd", "", "Current working directory (default: $PWD)")
+	wizardOllamaURL := wizardFlags.StringLong("ollama-url", "http://localhost:11434/v1", "Ollama endpoint")
+	wizardModel := wizardFlags.StringLong("model", "qwen2.5-coder:3b", "Model name")
+	wizardTimeout := wizardFlags.DurationLong("timeout", 30*time.Second, "LLM timeout")
+	wizardDBPath := wizardFlags.StringLong("db", "~/.zist/zist.db", "SQLite database path")
+	wizardCmd := &ff.Command{
+		Name:      "wizard",
+		Usage:     "zist wizard --query 'natural language' [--json]",
+		ShortHelp: "Generate shell commands from natural language",
+		Flags:     wizardFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			return runWizard(ctx, *wizardDBPath, *wizardQuery, *wizardPWD,
+				*wizardOllamaURL, *wizardModel, *wizardTimeout,
+				*wizardCache, *wizardCacheCmd, *wizardListCache, *wizardClearCache)
+		},
+	}
+
 	var rootCmd *ff.Command
 
 	rootCmd = &ff.Command{
@@ -82,7 +105,7 @@ func main() {
 			"Reads commands from multiple ZSH history files, " +
 			"aggregates them into a local SQLite database, and provides fast search.",
 		Flags:       rootFlags,
-		Subcommands: []*ff.Command{collectCmd, searchCmd, installCmd, uninstallCmd},
+		Subcommands: []*ff.Command{collectCmd, searchCmd, wizardCmd, installCmd, uninstallCmd},
 		Exec: func(ctx context.Context, args []string) error {
 			return fmt.Errorf("no subcommand provided")
 		},
@@ -271,7 +294,7 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 		"--read0",
 		"--print0",
 		"--delimiter=\t",
-		"--with-nth=1",           // Only display the command (field 1)
+		"--with-nth=1", // Only display the command (field 1)
 		"--preview", `sh -c 'printf "Source: %s\nTime:   %s\n\nCommand:\n%s\n" "$2" "$3" "$1"' _ {1} {2} {3}`,
 		"--preview-window=right:40%:wrap",
 	)
@@ -330,11 +353,49 @@ _zist_search() {
 zle -N _zist_search
 bindkey '^X' _zist_search
 
-# Collect history after each command (subshell suppresses job notifications)
+# Wizard state for caching
+typeset -g _zist_wizard_query=""
+typeset -g _zist_wizard_command=""
+
+# Ctrl+G for wizard (natural language → command)
+_zist_wizard() {
+  local query="$BUFFER"
+  [[ -z "$query" ]] && return
+
+  local cmd
+  cmd=$(zist wizard --query "$query" 2>/dev/null)
+
+  if [[ -n "$cmd" ]]; then
+    # Store for caching on execution
+    _zist_wizard_query="$query"
+    _zist_wizard_command="$cmd"
+    BUFFER="$cmd"
+    CURSOR=${#BUFFER}
+  fi
+  zle reset-prompt
+}
+zle -N _zist_wizard
+bindkey '^G' _zist_wizard
+
+# Hook into accept-line to cache wizard commands when executed
+_zist_accept_line() {
+  # If this was a wizard-generated command, cache it
+  if [[ -n "$_zist_wizard_query" && "$BUFFER" == "$_zist_wizard_command"* ]]; then
+    # Cache the actual command being run (user may have edited it)
+    (zist wizard --cache "$_zist_wizard_query" --cache-command "$BUFFER" &) 2>/dev/null
+  fi
+  # Clear wizard state
+  _zist_wizard_query=""
+  _zist_wizard_command=""
+  zle .accept-line
+}
+zle -N accept-line _zist_accept_line
+
+# Collect history after each command
+autoload -Uz add-zsh-hook
 _zist_precmd() {
   (zist collect --quiet &)
 }
-autoload -Uz add-zsh-hook
 add-zsh-hook precmd _zist_precmd
 # END zist integration
 `
@@ -372,7 +433,9 @@ func runInstall(ctx context.Context) error {
 	fmt.Println("ZSH integration installed")
 	fmt.Println("  Collects from: ~/.histories (default)")
 	fmt.Printf("  Run: source %s\n", zshrcPath)
-	fmt.Println("  Then press Ctrl+X to search history")
+	fmt.Println("  Keybindings:")
+	fmt.Println("    Ctrl+G - wizard (natural language → command)")
+	fmt.Println("    Ctrl+X - fuzzy history search")
 	return nil
 }
 
@@ -430,5 +493,88 @@ func runUninstall(ctx context.Context) error {
 
 	fmt.Println("ZSH integration removed")
 	fmt.Printf("  Run: source %s\n", zshrcPath)
+	return nil
+}
+
+func runWizard(ctx context.Context, dbPath, query, pwd, ollamaURL, model string, timeout time.Duration, cacheQuery, cacheCmd string, listCache, clearCache bool) error {
+	// Initialize database
+	db, err := InitDB(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	// Handle cache operations
+	if clearCache {
+		if err := ClearWizardCache(db); err != nil {
+			return err
+		}
+		fmt.Println("Wizard cache cleared")
+		return nil
+	}
+
+	if listCache {
+		entries, err := ListWizardCache(db, 50)
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("No cached mappings")
+			return nil
+		}
+		fmt.Printf("Cached mappings (%d):\n\n", len(entries))
+		for _, e := range entries {
+			fmt.Printf("  Query: %s\n", e.QueryOriginal)
+			fmt.Printf("  Command: %s\n", e.Command)
+			fmt.Printf("  Used: %d times\n\n", e.RunCount)
+		}
+		return nil
+	}
+
+	if cacheQuery != "" && cacheCmd != "" {
+		if err := SetWizardCache(db, cacheQuery, cacheCmd); err != nil {
+			return err
+		}
+		fmt.Printf("Cached: %q → %s\n", cacheQuery, cacheCmd)
+		return nil
+	}
+
+	// Generate command from query
+	if query == "" {
+		return fmt.Errorf("--query is required (or use --list-cache, --clear-cache)")
+	}
+
+	// Default PWD to current directory
+	if pwd == "" {
+		pwd, _ = os.Getwd()
+	}
+
+	// Create LLM client
+	llmConfig := LLMConfig{
+		BaseURL:     ollamaURL,
+		APIKey:      "ollama",
+		Model:       model,
+		Timeout:     timeout,
+		MaxTokens:   500,
+		Temperature: 0.3,
+	}
+
+	llm, err := NewLLMClient(llmConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create LLM client: %w", err)
+	}
+
+	// Create wizard and generate
+	wizard := NewWizard(db, llm)
+	resp, err := wizard.Generate(ctx, WizardRequest{
+		Query: query,
+		PWD:   pwd,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Output just the command (for shell integration)
+	fmt.Println(resp.Command)
 	return nil
 }
