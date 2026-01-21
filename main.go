@@ -80,8 +80,9 @@ func main() {
 	wizardListCache := wizardFlags.BoolLong("list-cache", "List cached query→command mappings")
 	wizardClearCache := wizardFlags.BoolLong("clear-cache", "Clear all cached mappings")
 	wizardPWD := wizardFlags.StringLong("pwd", "", "Current working directory (default: $PWD)")
-	wizardOllamaURL := wizardFlags.StringLong("ollama-url", "http://localhost:11434/v1", "Ollama endpoint")
-	wizardModel := wizardFlags.StringLong("model", "qwen2.5-coder:3b", "Model name")
+	wizardOllamaURL := wizardFlags.StringLong("llm-api-url", "", "LLM API endpoint")
+	wizardModel := wizardFlags.StringLong("model", "", "Model name")
+	wizardKey := wizardFlags.StringLong("key", "", "API key")
 	wizardTimeout := wizardFlags.DurationLong("timeout", 30*time.Second, "LLM timeout")
 	wizardDBPath := wizardFlags.StringLong("db", "~/.zist/zist.db", "SQLite database path")
 	wizardCmd := &ff.Command{
@@ -90,8 +91,26 @@ func main() {
 		ShortHelp: "Generate shell commands from natural language",
 		Flags:     wizardFlags,
 		Exec: func(ctx context.Context, args []string) error {
+			ollamaURL := *wizardOllamaURL
+			if ollamaURL == "" {
+				ollamaURL = os.Getenv("ZIST_LLM_API_URL")
+			}
+			if ollamaURL == "" {
+				ollamaURL = "http://localhost:11434/v1"
+			}
+			model := *wizardModel
+			if model == "" {
+				model = os.Getenv("ZIST_MODEL")
+			}
+			if model == "" {
+				model = "qwen2.5-coder:3b"
+			}
+			key := *wizardKey
+			if key == "" {
+				key = os.Getenv("ZIST_LLM_API_KEY")
+			}
 			return runWizard(ctx, *wizardDBPath, *wizardQuery, *wizardPWD,
-				*wizardOllamaURL, *wizardModel, *wizardTimeout,
+				ollamaURL, model, key, *wizardTimeout,
 				*wizardCache, *wizardCacheCmd, *wizardListCache, *wizardClearCache)
 		},
 	}
@@ -496,7 +515,7 @@ func runUninstall(ctx context.Context) error {
 	return nil
 }
 
-func runWizard(ctx context.Context, dbPath, query, pwd, ollamaURL, model string, timeout time.Duration, cacheQuery, cacheCmd string, listCache, clearCache bool) error {
+func runWizard(ctx context.Context, dbPath, query, pwd, ollamaURL, model, apiKey string, timeout time.Duration, cacheQuery, cacheCmd string, listCache, clearCache bool) error {
 	// Initialize database
 	db, err := InitDB(dbPath)
 	if err != nil {
@@ -552,7 +571,7 @@ func runWizard(ctx context.Context, dbPath, query, pwd, ollamaURL, model string,
 	// Create LLM client
 	llmConfig := LLMConfig{
 		BaseURL:     ollamaURL,
-		APIKey:      "ollama",
+		APIKey:      apiKey,
 		Model:       model,
 		Timeout:     timeout,
 		MaxTokens:   500,
