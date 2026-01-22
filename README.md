@@ -8,7 +8,7 @@ Local ZSH history aggregation tool. Collect commands from multiple ZSH history f
 - **Instant search**: Query 10,000+ commands in milliseconds with SQLite FTS5
 - **Ctrl+X for fuzzy search**: Interactive fuzzy search with fzf and preview pane
 - **Automatic deduplication**: `(source, timestamp)` primary key prevents duplicates
-- **AI assistant history**: Collect from Claude Desktop and OpenCode
+- **AI assistant history**: Collect from Claude Code and OpenCode
 
 ## Features
 
