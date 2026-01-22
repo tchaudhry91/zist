@@ -22,11 +22,11 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Run GoReleaser with CGO cross-compilation
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          distribution: goreleaser-cross
           version: latest
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: 0
