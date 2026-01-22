@@ -115,7 +115,3 @@ tasks:
       GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
       GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
       ls -lh {{.BUILD_DIR}}/release
-
-  help:
-    desc: Show help message
-    cmd: cat HELP.txt

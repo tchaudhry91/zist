@@ -38,7 +38,6 @@ archives:
     files:
       - README.md
       - LICENSE*
-      - HELP.txt
 
 checksum:
   name_template: "checksums.txt"

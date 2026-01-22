@@ -4,11 +4,11 @@ Local ZSH history aggregation tool. Collect commands from multiple ZSH history f
 
 ## Why zist?
 
-- **Multiple machines**: Collect history from all your machines into one database
-- **Shared access**: Sync with rsync, git, or any file sharing mechanism
+- **Multiple history files**: Collect from several sources simultaneously
 - **Instant search**: Query 10,000+ commands in milliseconds with SQLite FTS5
 - **Ctrl+X for fuzzy search**: Interactive fuzzy search with fzf and preview pane
 - **Automatic deduplication**: `(source, timestamp)` primary key prevents duplicates
+- **AI assistant history**: Collect from Claude Desktop and OpenCode
 
 ## Features
 
@@ -52,16 +52,14 @@ export PATH="$HOME/go/bin:$PATH"
 ## Quick Start
 
 ```bash
-# Set up history sync directory
-mkdir -p ~/.histories/$(hostname)
-mv ~/.zsh_history ~/.histories/$(hostname)/
-ln -s ~/.histories/$(hostname)/.zsh_history ~/.zsh_history
+# Collect from your ZSH history file
+zist collect ~/.zsh_history
 
-# Collect from default location (~/.histories)
-zist collect
+# Or collect from multiple history files at once
+zist collect ~/.zsh_history ~/.claude/claude_zsh_history ~/.opencode_zsh_history
 
-# Or collect from specific files/directories
-zist collect ~/.zsh_history ~/other_histories/
+# Or collect from a directory (recursively finds all *zsh_history files)
+zist collect ~/.histories/
 
 # Search commands (requires fzf) - shows preview pane with source/timestamp
 zist search docker
@@ -86,11 +84,16 @@ Collect commands from ZSH history files.
 zist collect [--db PATH] [--quiet] [PATH...]
 ```
 
-- **PATH**: History file or directory to search (default: `~/.histories`)
+- **PATH**: History file or directory to search (paths can be mixed)
 - **--db**: Database path (default: `~/.zist/zist.db`)
 - **--quiet**: Suppress output (useful for scripts/automation)
 
 Directories are searched recursively for `*zsh_history` files.
+
+**Example - Collect from multiple sources:**
+```bash
+zist collect ~/.zsh_history ~/.claude/claude_zsh_history ~/.opencode_zsh_history
+```
 
 ### search
 
@@ -108,22 +111,139 @@ zist search [--db PATH] [--limit N] [--since DATE] [--until DATE] [QUERY]
 
 The search displays a **preview pane** showing the source file and timestamp for the highlighted command.
 
+## Collect History from AI Assistants
+
+zist can capture commands run by your AI assistants. Here's how to enable it:
+
+### Claude Desktop
+
+Add this to your Claude Desktop settings (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\": \\(now | floor):0;\\(.tool_input.command)\"' >> ~/.claude/claude_zsh_history"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Then collect the history:
+```bash
+zist collect ~/.claude/claude_zsh_history
+```
+
+### OpenCode
+
+Create a plugin at `~/.opencode/plugins/bash-history.ts`:
+
+```typescript
+import { appendFileSync } from "fs"
+import { homedir } from "os"
+
+export async function BashHistoryPlugin() {
+  const historyFile = `${homedir()}/.opencode_zsh_history`
+
+  return {
+    "tool.execute.before": async (input, output) => {
+      if (input?.tool === "bash" && output?.args?.command) {
+        const timestamp = Math.floor(Date.now() / 1000)
+        appendFileSync(historyFile, `: ${timestamp}:0;${output.args.command}\n`)
+      }
+    },
+  }
+}
+```
+
+Then collect the history:
+```bash
+zist collect ~/.opencode_zsh_history
+```
+
 ## ZSH Integration
 
-Install Ctrl+X binding:
+Install keybindings:
 
 ```bash
 zist install
 source ~/.zshrc
 ```
 
-Now press **Ctrl+X** to search across all aggregated history with fuzzy matching.
+**Keybindings:**
+- **Ctrl+X** - Fuzzy search history (uses what you typed as query)
+- **Ctrl+G** - AI wizard (natural language → command)
 
-**What it does:**
+### History Search (Ctrl+X)
+
+Press Ctrl+X to search across all aggregated history with fuzzy matching:
+
 - Uses `$LBUFFER` (what you typed before Ctrl+X) as initial query
 - Opens fzf with all commands from database (with preview pane)
 - Places selected command in buffer for editing
 - precmd hook automatically collects from `~/.histories` after each command
+
+### AI Wizard (Ctrl+G)
+
+Press Ctrl+G to convert natural language to shell commands using an LLM.
+
+zist works with **any OpenAI-compatible API**, including Ollama, OpenAI, OpenRouter, Together, Groq, and more.
+
+**Option 1: Ollama (local, free)**
+```bash
+# Install Ollama (https://ollama.com)
+curl https://ollama.com/install.sh | sh
+
+# Pull a code model
+ollama pull qwen2.5-coder:3b
+
+# Configure zist
+export ZIST_LLM_API_URL=http://localhost:11434/v1
+export ZIST_MODEL=qwen2.5-coder:3b
+```
+
+**Option 2: OpenRouter (cloud, pay-per-token)**
+```bash
+# Get an API key from https://openrouter.ai
+# Configure zist
+export ZIST_LLM_API_URL=https://openrouter.ai/api/v1
+export ZIST_LLM_API_KEY=sk-or-v1-...  # Your OpenRouter key
+export ZIST_MODEL=deepseek/deepseek-coder
+```
+
+**Option 3: OpenAI**
+```bash
+# Configure zist
+export ZIST_LLM_API_URL=https://api.openai.com/v1
+export ZIST_LLM_API_KEY=sk-...  # Your OpenAI key
+export ZIST_MODEL=gpt-4o
+```
+
+**Command-line usage:**
+```bash
+zist wizard --query "list all running docker containers"
+zist wizard --query "find all files larger than 100MB"
+zist wizard --query "compress a directory into tar.gz"
+```
+
+**Wizard features:**
+- Caches query→command mappings after execution to speed up repeated queries
+- Learns from your command history for better suggestions
+- Uses your current working directory for context
+
+**Cache management:**
+```bash
+zist wizard --list-cache      # View cached mappings
+zist wizard --clear-cache     # Clear all cache
+```
 
 **Uninstall:**
 
