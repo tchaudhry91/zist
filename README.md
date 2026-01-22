@@ -130,6 +130,67 @@ zist search [--db PATH] [--limit N] [--since DATE] [--until DATE] [QUERY]
 
 The search displays a **preview pane** showing the source file and timestamp for the highlighted command.
 
+### wizard
+
+Generate shell commands from natural language using an LLM.
+
+```bash
+zist wizard [--db PATH] [--query QUERY] [--pwd PATH] [--llm-api-url URL] [--model NAME] [--key KEY] [--timeout DURATION] [--cache QUERY] [--cache-command CMD] [--list-cache] [--clear-cache]
+```
+
+- **--query**: Natural language query to convert to shell command
+- **--pwd**: Current working directory (default: actual PWD)
+- **--db**: Database path (default: `~/.zist/zist.db`)
+- **--llm-api-url**: LLM API endpoint (overridden by `ZIST_LLM_API_URL` env var)
+- **--model**: Model name (overridden by `ZIST_MODEL` env var)
+- **--key**: API key (overridden by `ZIST_LLM_API_KEY` env var)
+- **--timeout**: LLM request timeout (default: 30s)
+- **--cache**: Cache a query→command mapping (use with --cache-command)
+- **--cache-command**: Command to cache (use with --cache)
+- **--list-cache**: List all cached query→command mappings
+- **--clear-cache**: Clear all cached mappings
+
+## Configuration
+
+zist can be configured using environment variables.
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ZIST_LLM_API_URL` | LLM API endpoint URL | `http://localhost:11434/v1` |
+| `ZIST_MODEL` | Model name to use | `qwen2.5-coder:3b` |
+| `ZIST_LLM_API_KEY` | API key for hosted LLM providers | `ollama` |
+
+### Example Configuration
+
+**Shell export (temporary):**
+```bash
+export ZIST_LLM_API_URL=http://localhost:11434/v1
+export ZIST_MODEL=qwen2.5-coder:3b
+```
+
+**Add to ~/.zshrc or ~/.bashrc (permanent):**
+```bash
+# For Ollama
+export ZIST_LLM_API_URL=http://localhost:11434/v1
+export ZIST_MODEL=qwen2.5-coder:3b
+
+# Or for OpenRouter
+export ZIST_LLM_API_URL=https://openrouter.ai/api/v1
+export ZIST_LLM_API_KEY=sk-or-v1-your-key-here
+export ZIST_MODEL=deepseek/deepseek-coder
+```
+
+**Command-line flags override environment variables:**
+```bash
+# Even with env vars set, you can override per-command
+ZIST_LLM_API_URL=http://localhost:11434/v1 zist wizard --query "test"
+
+# Or override with flags
+zist wizard --query "test" --llm-api-url https://api.openai.com/v1 --model gpt-4o
+```
+
 ## Collect History from AI Assistants
 
 zist can capture commands run by your AI assistants. Here's how to enable it:
