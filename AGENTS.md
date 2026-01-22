@@ -218,3 +218,13 @@ func expandTilde(path string) string {
 - Default database location: `~/.zist/zist.db`
 - fzf must be installed for search functionality
 - Tests use `t.TempDir()` for isolation
+
+## Version Management
+
+- The version is defined in `Taskfile.yml` under `VERSION` variable
+- When bumping version, you MUST update both:
+  1. `VERSION` in Taskfile.yml
+  2. Git tag (format: `v<VERSION>`, e.g., `v0.2.2`)
+- The build ldflags inject `Taskfile.yml` VERSION into `main.version`
+- Always keep git tag and Taskfile.yml VERSION in sync
+- When replacing a tag: `git tag -d vOLD && git tag vNEW`
