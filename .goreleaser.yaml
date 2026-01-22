@@ -10,8 +10,6 @@ builds:
   - id: zist
     main: .
     binary: zist
-    env:
-      - CGO_ENABLED=1
     flags:
       - -tags=fts5
     ldflags:

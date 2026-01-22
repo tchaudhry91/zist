@@ -22,11 +22,30 @@ Local ZSH history aggregation tool. Collect commands from multiple ZSH history f
 
 ## Requirements
 
-- Go 1.25+
-- SQLite with FTS5 support
 - fzf (for search functionality)
 
 ## Installation
+
+### Pre-built binaries (recommended)
+
+Download the latest release from [GitHub releases](https://github.com/tchaudhry91/zist/releases):
+
+```bash
+# Linux (x64)
+curl -L https://github.com/tchaudhry91/zist/releases/latest/download/zist-linux-x64 -o zist
+chmod +x zist
+sudo mv zist /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/tchaudhry91/zist/releases/latest/download/zist-macos-intel -o zist
+chmod +x zist
+sudo mv zist /usr/local/bin/
+
+# macOS (Apple Silicon)
+curl -L https://github.com/tchaudhry91/zist/releases/latest/download/zist-macos-arm -o zist
+chmod +x zist
+sudo mv zist /usr/local/bin/
+```
 
 ### From source
 
@@ -115,9 +134,9 @@ The search displays a **preview pane** showing the source file and timestamp for
 
 zist can capture commands run by your AI assistants. Here's how to enable it:
 
-### Claude Desktop
+### Claude Code
 
-Add this to your Claude Desktop settings (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Add this to your Claude Code settings (`~/.claude/settings.json`):
 
 ```json
 {

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
+	_ "modernc.org/sqlite"
 )
 
 // version is set via ldflags during build
