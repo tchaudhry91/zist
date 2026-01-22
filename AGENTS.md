@@ -212,7 +212,7 @@ func expandTilde(path string) string {
 
 ## Important Notes
 
-- SQLite requires CGO for go-sqlite3 driver
+- SQLite uses pure Go driver (modernc.org/sqlite), no CGO required
 - Always use `-tags fts5` when building or testing
 - The binary is output to `bin/` directory
 - Default database location: `~/.zist/zist.db`

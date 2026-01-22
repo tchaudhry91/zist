@@ -15,7 +15,7 @@ tasks:
 
   build:
     desc: Build zist binary
-    cmd: mkdir -p {{.BUILD_DIR}} && go build -tags fts5 -ldflags="-X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
+    cmd: mkdir -p {{.BUILD_DIR}} && CGO_ENABLED=0 go build -tags fts5 -ldflags="-X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
     sources:
       - "*.go"
       - go.mod
@@ -110,8 +110,8 @@ tasks:
     desc: Build release binaries locally (no goreleaser)
     cmd: |
       mkdir -p {{.BUILD_DIR}}/release
-      GOOS=linux GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-x64 .
-      GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-arm64 .
-      GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
-      GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-x64 .
+      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-linux-arm64 .
+      CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-intel .
+      CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags fts5 -ldflags="-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/release/{{.BINARY_NAME}}-macos-arm .
       ls -lh {{.BUILD_DIR}}/release
