@@ -210,6 +210,8 @@ type SearchResult struct {
 	Command   string
 	Source    string
 	Timestamp float64
+	Score     float64 // Frecency score (higher = more relevant)
+	Count     int     // How many times this command was used
 }
 
 type SearchOptions struct {
@@ -293,6 +295,83 @@ func escapeFTS(s string) string {
 	s = strings.ReplaceAll(s, ")", "")
 	s = strings.ReplaceAll(s, ":", "")
 	return s
+}
+
+// SearchCommandsByFrecency returns commands ranked by frecency (frequency + recency).
+// Commands are deduplicated - each unique command appears once with its aggregated score.
+// Frecency formula: score = count * recency_weight
+// recency_weight = 100 / (1 + hours_since_last_use * 0.01)
+func SearchCommandsByFrecency(db *sql.DB, opts SearchOptions) ([]SearchResult, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 500
+	}
+
+	now := float64(time.Now().Unix())
+
+	var queryBuilder strings.Builder
+	var args []interface{}
+
+	// Build subquery to get matching rowids if we have a search query
+	if opts.Query != "" {
+		ftsQuery := buildFTSQuery(opts.Query)
+		queryBuilder.WriteString(`
+			SELECT
+				command,
+				MAX(source) as source,
+				MAX(timestamp) as last_used,
+				COUNT(*) as count,
+				COUNT(*) * (100.0 / (1.0 + ((? - MAX(timestamp)) / 3600.0) * 0.01)) as score
+			FROM commands
+			WHERE rowid IN (SELECT rowid FROM commands_fts WHERE commands_fts MATCH ?)
+		`)
+		args = append(args, now, ftsQuery)
+	} else {
+		queryBuilder.WriteString(`
+			SELECT
+				command,
+				MAX(source) as source,
+				MAX(timestamp) as last_used,
+				COUNT(*) as count,
+				COUNT(*) * (100.0 / (1.0 + ((? - MAX(timestamp)) / 3600.0) * 0.01)) as score
+			FROM commands
+			WHERE 1=1
+		`)
+		args = append(args, now)
+	}
+
+	// Time range filters
+	if opts.Since > 0 {
+		queryBuilder.WriteString(" AND timestamp >= ?")
+		args = append(args, opts.Since)
+	}
+	if opts.Until > 0 {
+		queryBuilder.WriteString(" AND timestamp <= ?")
+		args = append(args, opts.Until)
+	}
+
+	queryBuilder.WriteString(" GROUP BY command ORDER BY score DESC LIMIT ?")
+	args = append(args, opts.Limit)
+
+	rows, err := db.Query(queryBuilder.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search commands by frecency: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.Command, &result.Source, &result.Timestamp, &result.Count, &result.Score); err != nil {
+			return nil, fmt.Errorf("failed to scan command: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
+	}
+
+	return results, nil
 }
 
 // FrequentCommand represents a command and its usage count

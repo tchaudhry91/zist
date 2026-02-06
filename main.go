@@ -289,7 +289,7 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 	}
 	defer db.Close()
 
-	commands, err := SearchCommands(db, SearchOptions{
+	commands, err := SearchCommandsByFrecency(db, SearchOptions{
 		Query: query,
 		Limit: limit,
 		Since: sinceTs,
@@ -307,14 +307,14 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 		return fmt.Errorf("fzf not found in PATH, please install it first")
 	}
 
-	// fzf with preview pane showing source and timestamp
+	// fzf with preview pane showing source, timestamp, and frecency info
 	// Use --read0 to handle multiline commands (null-byte separated records)
 	cmd := exec.CommandContext(ctx, "fzf",
 		"--read0",
 		"--print0",
 		"--delimiter=\t",
 		"--with-nth=1", // Only display the command (field 1)
-		"--preview", `sh -c 'printf "Source: %s\nTime:   %s\n\nCommand:\n%s\n" "$2" "$3" "$1"' _ {1} {2} {3}`,
+		"--preview", `sh -c 'printf "Source: %s\nTime:   %s\nUsed:   %s times\nScore:  %s\n\nCommand:\n%s\n" "$2" "$3" "$4" "$5" "$1"' _ {1} {2} {3} {4} {5}`,
 		"--preview-window=right:40%:wrap",
 	)
 	cmd.Stderr = os.Stderr
@@ -326,9 +326,9 @@ func runSearch(ctx context.Context, dbPath string, args []string, limit int, sin
 
 	go func() {
 		for _, result := range commands {
-			// Tab-separated: command \t source \t timestamp, null-byte terminated
+			// Tab-separated: command \t source \t timestamp \t count \t score, null-byte terminated
 			formattedTime := FormatTimestamp(result.Timestamp)
-			fmt.Fprintf(stdin, "%s\t%s\t%s\x00", result.Command, result.Source, formattedTime)
+			fmt.Fprintf(stdin, "%s\t%s\t%s\t%d\t%.1f\x00", result.Command, result.Source, formattedTime, result.Count, result.Score)
 		}
 		stdin.Close()
 	}()
